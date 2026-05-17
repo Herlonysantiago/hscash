@@ -30,13 +30,18 @@ object NotificationScheduler {
         if (conta.status == ContaStatus.PAGO) return
 
         val vencimento = parseDate(conta.vencimento) ?: return
-        schedule(context, conta, vencimento, -1, "Conta vence amanha")
-        schedule(context, conta, vencimento, 0, "Conta vence hoje")
+        AppSettings.reminderDays(context).forEach { daysBefore ->
+            val title = when (daysBefore) {
+                0 -> "Conta vence hoje"
+                1 -> "Conta vence amanha"
+                else -> "Conta vence em $daysBefore dias"
+            }
+            schedule(context, conta, vencimento, -daysBefore, title)
+        }
     }
 
     fun cancelConta(context: Context, conta: ContaSalva) {
-        cancel(context, conta, -1)
-        cancel(context, conta, 0)
+        listOf(-7, -3, -1, 0).forEach { cancel(context, conta, it) }
     }
 
     fun ensureChannel(context: Context) {

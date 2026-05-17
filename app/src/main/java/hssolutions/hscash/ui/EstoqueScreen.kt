@@ -1,8 +1,10 @@
 package hssolutions.hscash.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,15 +18,18 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -53,11 +58,15 @@ private enum class ContaFiltro(val label: String) {
 }
 
 @Composable
-fun EstoqueScreen(onContaClick: (String) -> Unit = {}) {
+fun EstoqueScreen(
+    onContaClick: (String) -> Unit = {},
+    onAddConta: (String) -> Unit = {}
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var busca by remember { mutableStateOf("") }
     var filtro by remember { mutableStateOf(ContaFiltro.TODAS) }
+    var direcao by remember { mutableStateOf(ContaDirecao.PAGAR) }
     var contas by remember { mutableStateOf(ContaStorage.listarContas(context)) }
 
     DisposableEffect(lifecycleOwner) {
@@ -70,34 +79,86 @@ fun EstoqueScreen(onContaClick: (String) -> Unit = {}) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val contasFiltradas = contas
+    val contasDaDirecao = contas.filter { it.direcao == direcao }
+    val contasFiltradas = contasDaDirecao
         .filter { it.matchesSearch(busca) }
         .filter { it.matchesFilter(filtro) }
+    val isReceber = direcao == ContaDirecao.RECEBER
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(Color(0xFFF3F6FA))
             .padding(16.dp)
     ) {
-        Row(
+        Card(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF102A43)),
+            shape = RoundedCornerShape(8.dp)
         ) {
-            Column {
-                Text(
-                    text = "Minhas Contas",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "${contas.size} cadastradas",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFF6B7280)
-                )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = if (isReceber) "A Receber" else "A Pagar",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "${contasDaDirecao.size} cadastradas",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.78f)
+                    )
+                }
+                Row {
+                    IconButton(onClick = { onAddConta(direcao) }) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = if (isReceber) "Adicionar recebimento" else "Adicionar conta",
+                            tint = Color.White
+                        )
+                    }
+                    IconButton(onClick = { ExportHelper.shareCsv(context, contasDaDirecao) }) {
+                        Icon(
+                            Icons.Default.FileDownload,
+                            contentDescription = "Exportar CSV",
+                            tint = Color.White
+                        )
+                    }
+                }
             }
-            IconButton(onClick = { ExportHelper.shareCsv(context, contas) }) {
-                Icon(Icons.Default.FileDownload, contentDescription = "Exportar CSV")
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                ContaDirecao.PAGAR to "A pagar",
+                ContaDirecao.RECEBER to "A receber"
+            ).forEach { (value, label) ->
+                FilterChip(
+                    selected = direcao == value,
+                    onClick = {
+                        direcao = value
+                        filtro = ContaFiltro.TODAS
+                    },
+                    label = { Text(label, fontWeight = if (direcao == value) FontWeight.Bold else FontWeight.Normal) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.White,
+                        labelColor = Color(0xFF111827),
+                        selectedContainerColor = if (value == ContaDirecao.RECEBER) Color(0xFF0B6B2B) else Color(0xFF1565C0),
+                        selectedLabelColor = Color.White
+                    )
+                )
             }
         }
 
@@ -109,7 +170,19 @@ fun EstoqueScreen(onContaClick: (String) -> Unit = {}) {
                 .padding(top = 16.dp),
             label = { Text("Buscar conta, banco ou categoria...") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            shape = MaterialTheme.shapes.medium
+            shape = MaterialTheme.shapes.medium,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color(0xFF111827),
+                unfocusedTextColor = Color(0xFF111827),
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                focusedBorderColor = Color(0xFF1565C0),
+                unfocusedBorderColor = Color(0xFFCBD5E1),
+                focusedLabelColor = Color(0xFF1565C0),
+                unfocusedLabelColor = Color(0xFF4B5563),
+                focusedLeadingIconColor = Color(0xFF1565C0),
+                unfocusedLeadingIconColor = Color(0xFF4B5563)
+            )
         )
 
         LazyRow(
@@ -120,7 +193,24 @@ fun EstoqueScreen(onContaClick: (String) -> Unit = {}) {
                 FilterChip(
                     selected = filtro == item,
                     onClick = { filtro = item },
-                    label = { Text(item.label) }
+                    label = {
+                        Text(
+                            text = item.label,
+                            fontWeight = if (filtro == item) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.White,
+                        labelColor = Color(0xFF111827),
+                        selectedContainerColor = Color(0xFF1565C0),
+                        selectedLabelColor = Color.White
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = filtro == item,
+                        borderColor = Color(0xFFCBD5E1),
+                        selectedBorderColor = Color(0xFF1565C0)
+                    )
                 )
             }
         }
@@ -135,6 +225,8 @@ fun EstoqueScreen(onContaClick: (String) -> Unit = {}) {
                     Text(
                         text = if (contas.isEmpty()) {
                             "Nenhuma conta salva ainda."
+                        } else if (contasDaDirecao.isEmpty()) {
+                            if (isReceber) "Nenhum recebimento cadastrado." else "Nenhuma conta a pagar cadastrada."
                         } else {
                             "Nenhuma conta encontrada."
                         },
@@ -162,8 +254,9 @@ private fun ContaCard(conta: ContaSalva, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(1.dp),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(3.dp),
+        border = BorderStroke(1.dp, Color(0xFFD7DEE8)),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -179,12 +272,12 @@ private fun ContaCard(conta: ContaSalva, onClick: () -> Unit) {
                     color = Color(0xFF111827)
                 )
                 Text(
-                    "${conta.categoria} - ${conta.banco}",
+                    "${if (conta.direcao == ContaDirecao.RECEBER) "Receber" else "Pagar"} - ${conta.categoria} - ${conta.banco}",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF6B7280)
                 )
                 Text(
-                    "Vencimento: ${conta.vencimento}",
+                    "${if (conta.direcao == ContaDirecao.RECEBER) "Previsao" else "Vencimento"}: ${conta.vencimento}",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF6B7280)
                 )
@@ -193,17 +286,30 @@ private fun ContaCard(conta: ContaSalva, onClick: () -> Unit) {
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = conta.valor,
-                    color = Color(0xFFD32F2F),
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = statusLabel(conta),
-                    color = statusColor,
+                    color = if (conta.direcao == ContaDirecao.RECEBER) Color(0xFF0B6B2B) else Color(0xFFB71C1C),
                     fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.titleMedium
                 )
+                StatusBadge(text = statusLabel(conta), color = statusColor)
             }
         }
+    }
+}
+
+@Composable
+private fun StatusBadge(text: String, color: Color) {
+    Box(
+        modifier = Modifier
+            .padding(top = 6.dp)
+            .background(color.copy(alpha = 0.14f), RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = text,
+            color = color,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelMedium
+        )
     }
 }
 

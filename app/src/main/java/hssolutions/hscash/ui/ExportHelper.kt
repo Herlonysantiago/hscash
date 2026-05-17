@@ -35,6 +35,7 @@ object ExportHelper {
 
     private fun buildCsv(contas: List<ContaSalva>): String {
         val header = listOf(
+            "direcao",
             "fornecedor",
             "banco",
             "categoria",
@@ -47,6 +48,7 @@ object ExportHelper {
 
         val rows = contas.joinToString("\n") { conta ->
             listOf(
+                if (conta.direcao == ContaDirecao.RECEBER) "receber" else "pagar",
                 conta.fornecedor,
                 conta.banco,
                 conta.categoria,

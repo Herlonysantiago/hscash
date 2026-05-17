@@ -60,7 +60,7 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "Contas marcadas como pagas",
+            text = "Pagamentos e recebimentos concluidos",
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF6B7280),
             modifier = Modifier.padding(top = 2.dp)
@@ -74,7 +74,7 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
             if (pagas.isEmpty()) {
                 item {
                     Text(
-                        text = "Nenhum pagamento registrado ainda.",
+                        text = "Nenhum registro concluido ainda.",
                         color = Color(0xFF4B5563)
                     )
                 }
@@ -102,14 +102,14 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
                                 color = Color(0xFF111827)
                             )
                             Text(
-                                text = "${conta.categoria} - vencia em ${conta.vencimento}",
+                                text = "${if (conta.direcao == ContaDirecao.RECEBER) "Recebido" else "Pago"} - ${conta.categoria} - data ${conta.vencimento}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF6B7280)
                             )
                         }
                         Text(
                             text = conta.valor,
-                            color = Color(0xFF388E3C),
+                            color = if (conta.direcao == ContaDirecao.RECEBER) Color(0xFF0B6B2B) else Color(0xFF388E3C),
                             fontWeight = FontWeight.Bold
                         )
                     }

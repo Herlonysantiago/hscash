@@ -23,11 +23,16 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.EventBusy
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,6 +62,8 @@ fun DashboardScreen() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var contas by remember { mutableStateOf(ContaStorage.listarContas(context)) }
+    var dashboardAllMonths by remember { mutableStateOf(false) }
+    var dashboardMonth by remember { mutableStateOf(startOfDay().apply { set(Calendar.DAY_OF_MONTH, 1) }) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -68,8 +75,17 @@ fun DashboardScreen() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val resumo = remember(contas) { ContaResumo.from(contas) }
-    val proximasContas = remember(contas) { proximasContas(contas) }
+    val resumo = remember(contas, dashboardMonth, dashboardAllMonths) {
+        ContaResumo.from(
+            contas = contas,
+            month = dashboardMonth,
+            allMonths = dashboardAllMonths
+        )
+    }
+    val proximasContas = remember(contas, dashboardMonth, dashboardAllMonths) {
+        val pagar = contas.filter { it.direcao == ContaDirecao.PAGAR }
+        proximasContas(if (dashboardAllMonths) pagar else pagar.filter { it.isInMonth(dashboardMonth) })
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -95,11 +111,50 @@ fun DashboardScreen() {
         }
 
         item {
+            PeriodSelector(
+                selectedMonth = dashboardMonth,
+                allMonths = dashboardAllMonths,
+                onPreviousMonth = {
+                    dashboardMonth = dashboardMonth.copyWithMonthOffset(-1)
+                    dashboardAllMonths = false
+                },
+                onNextMonth = {
+                    dashboardMonth = dashboardMonth.copyWithMonthOffset(1)
+                    dashboardAllMonths = false
+                },
+                onCurrentMonth = { dashboardAllMonths = false },
+                onAllMonths = { dashboardAllMonths = true }
+            )
+        }
+
+        item {
             TotalCard(
                 total = resumo.totalValor,
                 quantidade = resumo.totalContas,
                 proximoVencimento = resumo.proximoVencimento
             )
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                MetricCard(
+                    title = "A receber",
+                    value = resumo.totalReceber,
+                    icon = Icons.Default.AccountBalanceWallet,
+                    color = Color(0xFF0B6B2B),
+                    modifier = Modifier.weight(1f)
+                )
+                MetricCard(
+                    title = "Saldo previsto",
+                    value = resumo.saldoPrevisto,
+                    icon = Icons.Default.AccountBalanceWallet,
+                    color = Color(0xFF1565C0),
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
 
         item {
@@ -157,7 +212,7 @@ fun DashboardScreen() {
         item { StatusContaCard("No Prazo", resumo.noPrazo.toString(), "Sem urgencia neste momento", Color(0xFF388E3C), Icons.Default.CheckCircle) }
 
         item {
-            SectionTitle("Proximas contas")
+            SectionTitle("Proximas contas a pagar")
         }
 
         if (proximasContas.isEmpty()) {
@@ -192,7 +247,7 @@ private fun TotalCard(total: String, quantidade: Int, proximoVencimento: String)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "Total em aberto",
+                    text = "Total a pagar",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -282,6 +337,72 @@ private fun SectionTitle(text: String) {
         color = Color(0xFF111827),
         modifier = Modifier.padding(top = 4.dp)
     )
+}
+
+@Composable
+private fun PeriodSelector(
+    selectedMonth: Calendar,
+    allMonths: Boolean,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onCurrentMonth: () -> Unit,
+    onAllMonths: () -> Unit
+) {
+    val monthLabel = remember(selectedMonth) {
+        SimpleDateFormat("MMMM yyyy", Locale.forLanguageTag("pt-BR"))
+            .format(selectedMonth.time)
+            .replaceFirstChar { it.uppercase() }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onPreviousMonth, enabled = !allMonths) {
+                    Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Mes anterior")
+                }
+                Text(
+                    text = if (allMonths) "Todos os meses" else monthLabel,
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF111827)
+                )
+                IconButton(onClick = onNextMonth, enabled = !allMonths) {
+                    Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Proximo mes")
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = !allMonths,
+                    onClick = onCurrentMonth,
+                    label = { Text("Mes") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color(0xFF1565C0),
+                        selectedLabelColor = Color.White
+                    )
+                )
+                FilterChip(
+                    selected = allMonths,
+                    onClick = onAllMonths,
+                    label = { Text("Tudo") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color(0xFF1565C0),
+                        selectedLabelColor = Color.White
+                    )
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -405,6 +526,8 @@ private fun EmptyStateCard() {
 private data class ContaResumo(
     val totalContas: Int,
     val totalValor: String,
+    val totalReceber: String,
+    val saldoPrevisto: String,
     val totalPagoMes: String,
     val proximoVencimento: String,
     val vencidas: Int,
@@ -414,17 +537,20 @@ private data class ContaResumo(
     val noPrazo: Int
 ) {
     companion object {
-        fun from(contas: List<ContaSalva>): ContaResumo {
+        fun from(contas: List<ContaSalva>, month: Calendar, allMonths: Boolean): ContaResumo {
             val hoje = startOfDay()
             val amanha = startOfDay().apply { add(Calendar.DAY_OF_YEAR, 1) }
-            val pendentes = contas.filter { it.status != ContaStatus.PAGO }
+            val contasPeriodo = if (allMonths) contas else contas.filter { it.isInMonth(month) }
+            val pendentes = contasPeriodo.filter { it.status != ContaStatus.PAGO }
+            val pendentesPagar = pendentes.filter { it.direcao == ContaDirecao.PAGAR }
+            val pendentesReceber = pendentes.filter { it.direcao == ContaDirecao.RECEBER }
             var vencidas = 0
             var venceHoje = 0
             var venceAmanha = 0
             var venceNesteMes = 0
             var noPrazo = 0
 
-            pendentes.forEach { conta ->
+            pendentesPagar.forEach { conta ->
                 val vencimento = parseVencimento(conta.vencimento)
                 when {
                     vencimento == null -> noPrazo += 1
@@ -436,15 +562,19 @@ private data class ContaResumo(
                 }
             }
 
-            val pagoMes = contas
-                .filter { it.status == ContaStatus.PAGO && paidThisMonth(it, hoje) }
+            val pagoMes = contasPeriodo
+                .filter { it.direcao == ContaDirecao.PAGAR && it.status == ContaStatus.PAGO && if (allMonths) true else paidInMonth(it, month) }
                 .sumOf { parseValorCentavos(it.valor) }
+            val totalPagar = pendentesPagar.sumOf { parseValorCentavos(it.valor) }
+            val totalReceber = pendentesReceber.sumOf { parseValorCentavos(it.valor) }
 
             return ContaResumo(
-                totalContas = pendentes.size,
-                totalValor = formatMoney(pendentes.sumOf { parseValorCentavos(it.valor) }),
+                totalContas = pendentesPagar.size,
+                totalValor = formatMoney(totalPagar),
+                totalReceber = formatMoney(totalReceber),
+                saldoPrevisto = formatMoney(totalReceber - totalPagar),
                 totalPagoMes = formatMoney(pagoMes),
-                proximoVencimento = nextDueDate(pendentes),
+                proximoVencimento = nextDueDate(pendentesPagar),
                 vencidas = vencidas,
                 hoje = venceHoje,
                 amanha = venceAmanha,
@@ -503,10 +633,22 @@ private fun sameMonth(first: Calendar, second: Calendar): Boolean {
         first.get(Calendar.MONTH) == second.get(Calendar.MONTH)
 }
 
-private fun paidThisMonth(conta: ContaSalva, today: Calendar): Boolean {
+private fun paidInMonth(conta: ContaSalva, month: Calendar): Boolean {
     val paidAt = conta.pagoEm ?: return false
     val paidCalendar = Calendar.getInstance().apply { timeInMillis = paidAt }
-    return sameMonth(paidCalendar, today)
+    return sameMonth(paidCalendar, month)
+}
+
+private fun ContaSalva.isInMonth(month: Calendar): Boolean {
+    val date = parseVencimento(vencimento) ?: return false
+    return sameMonth(date, month)
+}
+
+private fun Calendar.copyWithMonthOffset(offset: Int): Calendar {
+    return (clone() as Calendar).apply {
+        add(Calendar.MONTH, offset)
+        set(Calendar.DAY_OF_MONTH, 1)
+    }
 }
 
 private fun parseValorCentavos(value: String): Long {

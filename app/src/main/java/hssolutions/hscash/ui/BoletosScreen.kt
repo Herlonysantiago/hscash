@@ -5,8 +5,10 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.util.Log
-import android.util.Size
+import android.util.Size as AndroidSize
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,13 +24,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
@@ -42,7 +46,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -54,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -129,13 +136,14 @@ fun BoletosScreen(
                         }
 
                         val imageAnalyzer = ImageAnalysis.Builder()
-                            .setTargetResolution(Size(1920, 1080))
+                            .setTargetResolution(AndroidSize(1920, 1080))
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build()
                             .also {
                                 it.setAnalyzer(cameraExecutor, BarcodeAnalyzer { barcode ->
                                     if (!abriuDetalhes) {
                                         abriuDetalhes = true
+                                        vibrate(context)
                                         onBoletoFound(barcode)
                                     }
                                 })
@@ -161,6 +169,17 @@ fun BoletosScreen(
             )
 
             Canvas(modifier = Modifier.fillMaxSize()) {
+                val left = size.width * 0.1f
+                val right = size.width * 0.9f
+                val top = size.height * 0.28f
+                val bottom = size.height * 0.72f
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.55f),
+                    topLeft = Offset(left, top),
+                    size = Size(right - left, bottom - top),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(18f, 18f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f)
+                )
                 drawLine(
                     color = Color.Red,
                     start = Offset(x = size.width * 0.1f, y = size.height / 2),
@@ -240,7 +259,7 @@ fun BoletosScreen(
                     onClick = {
                         val digits = codigoManual.filter(Char::isDigit)
                         if (parseBoleto(digits) == null) {
-                            erroManual = "Confira o codigo. Ele deve ter 44, 47 ou 48 digitos."
+                            erroManual = "Codigo invalido: ${digits.length} digitos. Use 47 para boleto bancario, 48 para convenio ou 44 do codigo de barras."
                         } else {
                             mostrarDigitacao = false
                             onBoletoFound(digits)
@@ -297,6 +316,8 @@ fun BoletoDetalheScreen(
     val boletoInfo = remember(codigo) { parseBoleto(codigo) }
     var fornecedor by remember { mutableStateOf("") }
     var categoria by remember { mutableStateOf("") }
+    var recorrente by remember { mutableStateOf(false) }
+    var recorrencia by remember { mutableStateOf("Mensal") }
     var vencimentoManual by remember { mutableStateOf("") }
     var erroVencimento by remember { mutableStateOf<String?>(null) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -307,6 +328,7 @@ fun BoletoDetalheScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFF5F7FA))
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -337,6 +359,11 @@ fun BoletoDetalheScreen(
                         text = "Nao consegui identificar esse codigo como boleto.",
                         color = Color(0xFFB71C1C),
                         fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Foram encontrados ${codigo.filter(Char::isDigit).length} digitos. Use 47 digitos para boleto bancario, 48 para convenio/arrecadacao ou 44 do codigo de barras.",
+                        color = Color(0xFFB71C1C),
+                        style = MaterialTheme.typography.bodySmall
                     )
                     SelectionContainer {
                         Text(text = codigo, color = Color(0xFF111827))
@@ -372,6 +399,10 @@ fun BoletoDetalheScreen(
         BoletoInfoRow("Banco emissor", boletoInfo.bancoEmissor, Color(0xFF1565C0))
         BoletoInfoRow("Vencimento", boletoInfo.vencimento, Color(0xFFC62828))
         BoletoInfoRow("Tipo", boletoInfo.tipo, Color(0xFF6A1B9A))
+        PaymentCopyCard(
+            linhaDigitavel = boletoInfo.linhaDigitavel,
+            codigoBarras = boletoInfo.codigoBarras
+        )
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -404,6 +435,31 @@ fun BoletoDetalheScreen(
                     placeholder = { Text("Ex: Luz, Agua, Internet") },
                     singleLine = true
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Conta recorrente",
+                        color = Color(0xFF111827),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Switch(checked = recorrente, onCheckedChange = { recorrente = it })
+                }
+                if (recorrente) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Semanal", "Mensal", "Anual").forEach { option ->
+                            TextButton(onClick = { recorrencia = option }) {
+                                Text(
+                                    text = option,
+                                    color = if (recorrencia == option) Color(0xFF1565C0) else Color(0xFF4B5563),
+                                    fontWeight = if (recorrencia == option) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -454,35 +510,6 @@ fun BoletoDetalheScreen(
             )
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "Codigo",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color(0xFF4B5563),
-                    fontWeight = FontWeight.Bold
-                )
-                SelectionContainer {
-                    Text(
-                        text = codigo,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0D47A1)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
         Button(
             onClick = {
                 val vencimentoFinal = if (precisaInformarVencimento) {
@@ -507,7 +534,9 @@ fun BoletoDetalheScreen(
                     context = context,
                     boleto = boletoParaSalvar,
                     fornecedor = fornecedor,
-                    categoria = categoria.ifBlank { "Outros" }
+                    categoria = categoria.ifBlank { "Outros" },
+                    recorrente = recorrente,
+                    recorrencia = recorrencia
                 )
                 val mensagem = if (salvou) {
                     "Conta salva com sucesso"
@@ -560,5 +589,15 @@ private fun isValidVencimento(value: String): Boolean {
         formatter.parse(value) != null
     } catch (_: Exception) {
         false
+    }
+}
+
+private fun vibrate(context: android.content.Context) {
+    val vibrator = context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? Vibrator
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        vibrator?.vibrate(VibrationEffect.createOneShot(90, VibrationEffect.DEFAULT_AMPLITUDE))
+    } else {
+        @Suppress("DEPRECATION")
+        vibrator?.vibrate(90)
     }
 }
