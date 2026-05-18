@@ -43,6 +43,7 @@ object ExportHelper {
             "vencimento",
             "status",
             "tipo",
+            "whatsapp_cliente",
             "codigo"
         ).joinToString(";")
 
@@ -56,6 +57,7 @@ object ExportHelper {
                 conta.vencimento,
                 statusLabel(conta),
                 conta.tipo,
+                conta.clienteWhatsapp.orEmpty(),
                 conta.codigo
             ).joinToString(";") { it.csvEscape() }
         }

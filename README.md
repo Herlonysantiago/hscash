@@ -16,9 +16,18 @@ O app permite escanear boletos pela camera, digitar codigo de barras manualmente
 - Edicao, exclusao e marcacao de conta como paga.
 - Historico de contas pagas.
 - Dashboard financeiro com total em aberto, pago no mes e proximos vencimentos.
-- Notificacoes de vencimento um dia antes e no dia.
+- Cadastro de clientes e cobrancas por WhatsApp.
+- Lista de cobrancas em aberto para contas a receber.
+- Relatorio mensal com exportacao em PDF.
+- Lixeira para restaurar contas removidas.
+- Notificacoes de vencimento e resumos diarios configuraveis.
 - Exportacao das contas em CSV.
+- Backup automatico local em JSON.
+- Bloqueio do app por senha e desbloqueio opcional por biometria.
+- Anexo e abertura de comprovantes em PDF, JPG, PNG ou outros formatos suportados.
 - Icone personalizado do app.
+
+> Recomendacao: para maior seguranca, mantenha uma copia dos backups em local seguro, como nuvem, pendrive, computador ou outro aparelho.
 
 ## Estrutura Principal
 
@@ -29,14 +38,15 @@ app/src/main/java/hssolutions/hscash/
     BarcodeAnalyzer.kt
     BoletoInfo.kt
     BoletosScreen.kt
+    ContasScreen.kt
     ContaDetalheScreen.kt
     ContaStorage.kt
     ContaUiUtils.kt
     DashboardScreen.kt
-    EstoqueScreen.kt
     ExportHelper.kt
     HistoricoScreen.kt
     NotificationScheduler.kt
+    ReceiptHelper.kt
 ```
 
 ## Tecnologias
@@ -46,9 +56,10 @@ app/src/main/java/hssolutions/hscash/
 - CameraX
 - ML Kit Barcode Scanning
 - Navigation Compose
-- SharedPreferences para armazenamento local
+- Room para armazenamento local das contas
+- SharedPreferences para preferencias do app
 - Android Notifications
-- FileProvider para exportacao CSV
+- FileProvider para exportacao CSV e abertura de comprovantes
 
 ## Como Compilar
 
@@ -82,6 +93,12 @@ O app usa:
 
 - Camera: para leitura de boletos.
 - Notificacoes: para alertas de vencimento.
+
+## Privacidade
+
+Um rascunho inicial esta em [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
+
+Antes de publicar, atualize o contato oficial da HS Solutions e confira se o texto reflete todas as funcionalidades ativas no app.
 
 ## Observacoes
 

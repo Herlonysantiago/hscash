@@ -2,6 +2,8 @@ package hssolutions.hscash.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -52,8 +54,12 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
     var contas by remember { mutableStateOf(ContaStorage.listarContas(context)) }
     val today = remember { startOfToday() }
     var selectedMonth by remember { mutableStateOf(startOfToday()) }
+    var selectedDate by remember { mutableStateOf(defaultSelectedDateForMonth(selectedMonth, today)) }
     val monthLabel = remember(selectedMonth) {
         SimpleDateFormat("MMMM yyyy", Locale.forLanguageTag("pt-BR")).format(selectedMonth.time)
+    }
+    val selectedDateLabel = remember(selectedDate) {
+        SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).format(selectedDate.time)
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -73,6 +79,9 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
             parseContaDate(conta.vencimento)?.get(Calendar.DAY_OF_MONTH)?.let { it to conta }
         }
         .groupBy({ it.first }, { it.second })
+    val selectedDayAccounts = monthAccounts.filter { conta ->
+        parseContaDate(conta.vencimento)?.let { sameDay(it, selectedDate) } == true
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -95,14 +104,18 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
                 }
                 IconButton(
                     onClick = {
-                        selectedMonth = selectedMonth.copyWithMonthOffset(-1)
+                        val newMonth = selectedMonth.copyWithMonthOffset(-1)
+                        selectedMonth = newMonth
+                        selectedDate = defaultSelectedDateForMonth(newMonth, today)
                     }
                 ) {
                     Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Mes anterior")
                 }
                 IconButton(
                     onClick = {
-                        selectedMonth = selectedMonth.copyWithMonthOffset(1)
+                        val newMonth = selectedMonth.copyWithMonthOffset(1)
+                        selectedMonth = newMonth
+                        selectedDate = defaultSelectedDateForMonth(newMonth, today)
                     }
                 ) {
                     Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Proximo mes")
@@ -127,7 +140,15 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
                     for (day in 1..maxDay) {
                         val count = countsByDay[day]?.size ?: 0
                         val isToday = sameMonth(today, selectedMonth) && day == today.get(Calendar.DAY_OF_MONTH)
-                        DayCell(day, count, isToday)
+                        val isSelected = sameMonth(selectedDate, selectedMonth) &&
+                            day == selectedDate.get(Calendar.DAY_OF_MONTH)
+                        DayCell(
+                            day = day,
+                            count = count,
+                            isToday = isToday,
+                            isSelected = isSelected,
+                            onClick = { selectedDate = selectedMonth.copyWithDay(day) }
+                        )
                     }
                 }
             }
@@ -135,23 +156,23 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
 
         item {
             Text(
-                "Contas de ${monthLabel.replaceFirstChar { it.uppercase() }}",
+                "Contas de $selectedDateLabel",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
         }
 
-        if (monthAccounts.isEmpty()) {
+        if (selectedDayAccounts.isEmpty()) {
             item {
                 Text(
-                    "Nenhuma conta neste mes.",
+                    "Nenhuma conta nesta data.",
                     color = Color(0xFF6B7280),
                     modifier = Modifier.padding(4.dp)
                 )
             }
         }
 
-        items(monthAccounts.sortedBy { parseContaDate(it.vencimento)?.timeInMillis ?: Long.MAX_VALUE }) { conta ->
+        items(selectedDayAccounts.sortedBy { parseContaDate(it.vencimento)?.timeInMillis ?: Long.MAX_VALUE }) { conta ->
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
@@ -188,23 +209,59 @@ private fun Calendar.copyWithMonthOffset(offset: Int): Calendar {
     }
 }
 
+private fun Calendar.copyWithDay(day: Int): Calendar {
+    return (clone() as Calendar).apply {
+        set(Calendar.DAY_OF_MONTH, day)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+}
+
+private fun defaultSelectedDateForMonth(month: Calendar, today: Calendar): Calendar {
+    return if (sameMonth(month, today)) {
+        today.copyWithDay(today.get(Calendar.DAY_OF_MONTH))
+    } else {
+        month.copyWithDay(1)
+    }
+}
+
 private fun sameMonth(first: Calendar, second: Calendar): Boolean {
     return first.get(Calendar.YEAR) == second.get(Calendar.YEAR) &&
         first.get(Calendar.MONTH) == second.get(Calendar.MONTH)
 }
 
+private fun sameDay(first: Calendar, second: Calendar): Boolean {
+    return sameMonth(first, second) &&
+        first.get(Calendar.DAY_OF_MONTH) == second.get(Calendar.DAY_OF_MONTH)
+}
+
 @Composable
-private fun DayCell(day: Int, count: Int, isToday: Boolean) {
+private fun DayCell(
+    day: Int,
+    count: Int,
+    isToday: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
     val bg = when {
+        isSelected -> Color(0xFF111827)
         count > 0 -> Color(0xFF1565C0)
         isToday -> Color(0xFFE3F2FD)
         else -> Color(0xFFF8FAFC)
     }
-    val fg = if (count > 0) Color.White else Color(0xFF111827)
+    val fg = if (isSelected || count > 0) Color.White else Color(0xFF111827)
     Column(
         modifier = Modifier
             .size(42.dp)
-            .background(bg, CircleShape),
+            .background(bg, CircleShape)
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) Color(0xFF22C55E) else Color(0xFFE0E5EC),
+                shape = CircleShape
+            )
+            .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

@@ -1,12 +1,15 @@
 package hssolutions.hscash.ui
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 
 object ContaStatus {
     const val PENDENTE = "PENDENTE"
     const val PAGO = "PAGO"
+    const val EXCLUIDO = "EXCLUIDO"
 }
 
 object ContaDirecao {
@@ -29,7 +32,9 @@ data class ContaSalva(
     val recorrente: Boolean = false,
     val recorrencia: String = "Mensal",
     val comprovantePath: String? = null,
-    val direcao: String = ContaDirecao.PAGAR
+    val direcao: String = ContaDirecao.PAGAR,
+    val clienteWhatsapp: String? = null,
+    val excluidaEm: Long? = null
 )
 
 object ContaStorage {
@@ -44,9 +49,9 @@ object ContaStorage {
         categoria: String = "Outros",
         recorrente: Boolean = false,
         recorrencia: String = "Mensal"
-    ): Boolean {
-        val contas = listarContas(context).toMutableList()
-        if (contas.any { it.codigo == boleto.codigoBarras && it.vencimento == boleto.vencimento }) return false
+    ): Boolean = databaseCall {
+        val contas = listarContasInternal(context).toMutableList()
+        if (contas.any { it.codigo == boleto.codigoBarras && it.vencimento == boleto.vencimento }) return@databaseCall false
 
         val novaConta = ContaSalva(
             id = System.currentTimeMillis().toString(),
@@ -66,7 +71,8 @@ object ContaStorage {
         dao(context).upsert(novaConta.toEntity())
         NotificationScheduler.scheduleConta(context, novaConta)
         criarRecorrenciasFuturas(context, novaConta)
-        return true
+        saveAutomaticBackup(context)
+        return@databaseCall true
     }
 
     fun salvarContaManual(
@@ -77,9 +83,10 @@ object ContaStorage {
         categoria: String = "Outros",
         recorrente: Boolean = false,
         recorrencia: String = "Mensal",
-        direcao: String = ContaDirecao.PAGAR
-    ): Boolean {
-        if (fornecedor.isBlank() || valor.isBlank() || !isValidContaDate(vencimento)) return false
+        direcao: String = ContaDirecao.PAGAR,
+        clienteWhatsapp: String? = null
+    ): Boolean = databaseCall {
+        if (fornecedor.isBlank() || valor.isBlank() || !isValidContaDate(vencimento)) return@databaseCall false
 
         val agora = System.currentTimeMillis()
         val novaConta = ContaSalva(
@@ -94,16 +101,31 @@ object ContaStorage {
             categoria = categoria.ifBlank { "Outros" }.trim(),
             recorrente = recorrente,
             recorrencia = recorrencia.ifBlank { "Mensal" },
-            direcao = if (direcao == ContaDirecao.RECEBER) ContaDirecao.RECEBER else ContaDirecao.PAGAR
+            direcao = if (direcao == ContaDirecao.RECEBER) ContaDirecao.RECEBER else ContaDirecao.PAGAR,
+            clienteWhatsapp = clienteWhatsapp?.trim()?.takeIf { it.isNotBlank() }
         )
 
         dao(context).upsert(novaConta.toEntity())
         NotificationScheduler.scheduleConta(context, novaConta)
         criarRecorrenciasFuturas(context, novaConta)
-        return true
+        saveAutomaticBackup(context)
+        return@databaseCall true
     }
 
-    fun listarContas(context: Context): List<ContaSalva> {
+    fun listarContas(context: Context): List<ContaSalva> = databaseCall {
+        listarContasInternal(context)
+    }
+
+    private fun listarContasInternal(context: Context): List<ContaSalva> {
+        migratePrefsIfNeeded(context)
+        return listarTodasInternal(context).filter { it.status != ContaStatus.EXCLUIDO }
+    }
+
+    fun listarLixeira(context: Context): List<ContaSalva> = databaseCall {
+        listarTodasInternal(context).filter { it.status == ContaStatus.EXCLUIDO }
+    }
+
+    private fun listarTodasInternal(context: Context): List<ContaSalva> {
         migratePrefsIfNeeded(context)
         return dao(context).listar().map { it.toContaSalva() }
     }
@@ -132,7 +154,9 @@ object ContaStorage {
                     recorrente = item.optBoolean("recorrente", false),
                     recorrencia = item.optString("recorrencia", "Mensal"),
                     comprovantePath = item.optStringOrNull("comprovantePath"),
-                    direcao = item.optString("direcao", ContaDirecao.PAGAR)
+                    direcao = item.optString("direcao", ContaDirecao.PAGAR),
+                    clienteWhatsapp = item.optStringOrNull("clienteWhatsapp"),
+                    excluidaEm = item.optLongOrNull("excluidaEm")
                 )
             )
         }
@@ -140,38 +164,68 @@ object ContaStorage {
         return contas.sortedByDescending { it.criadaEm }
     }
 
-    fun buscarConta(context: Context, id: String): ContaSalva? {
+    fun buscarConta(context: Context, id: String): ContaSalva? = databaseCall {
+        buscarContaInternal(context, id)
+    }
+
+    private fun buscarContaInternal(context: Context, id: String): ContaSalva? {
         migratePrefsIfNeeded(context)
         return dao(context).buscar(id)?.toContaSalva()
     }
 
-    fun atualizarConta(context: Context, contaAtualizada: ContaSalva) {
-        val contaAnterior = buscarConta(context, contaAtualizada.id)
+    fun atualizarConta(context: Context, contaAtualizada: ContaSalva) = databaseCall {
+        atualizarContaInternal(context, contaAtualizada)
+    }
+
+    private fun atualizarContaInternal(context: Context, contaAtualizada: ContaSalva) {
+        val contaAnterior = buscarContaInternal(context, contaAtualizada.id)
         if (deveLimparRecorrenciasAntigas(contaAnterior, contaAtualizada)) {
             removerRecorrenciasFuturas(context, contaAnterior!!)
         }
 
         dao(context).upsert(contaAtualizada.toEntity())
-        if (contaAtualizada.status == ContaStatus.PAGO) {
+        if (contaAtualizada.status == ContaStatus.PAGO || contaAtualizada.status == ContaStatus.EXCLUIDO) {
             NotificationScheduler.cancelConta(context, contaAtualizada)
         } else {
             NotificationScheduler.scheduleConta(context, contaAtualizada)
         }
         criarRecorrenciasFuturas(context, contaAtualizada)
+        saveAutomaticBackup(context)
     }
 
-    fun removerConta(context: Context, id: String) {
-        val conta = buscarConta(context, id)
+    fun removerConta(context: Context, id: String) = databaseCall {
+        val conta = buscarContaInternal(context, id)
         if (conta != null) {
             NotificationScheduler.cancelConta(context, conta)
+            dao(context).upsert(
+                conta.copy(
+                    status = ContaStatus.EXCLUIDO,
+                    excluidaEm = System.currentTimeMillis()
+                ).toEntity()
+            )
         }
-        dao(context).remover(id)
+        saveAutomaticBackup(context)
     }
 
-    fun marcarComoPago(context: Context, id: String) {
-        val conta = buscarConta(context, id) ?: return
-        atualizarConta(
-            context,
+    fun restaurarConta(context: Context, id: String) = databaseCall {
+        val conta = buscarContaInternal(context, id) ?: return@databaseCall
+        val restaurada = conta.copy(status = ContaStatus.PENDENTE, excluidaEm = null)
+        dao(context).upsert(restaurada.toEntity())
+        NotificationScheduler.scheduleConta(context, restaurada)
+        saveAutomaticBackup(context)
+    }
+
+    fun removerDefinitivamente(context: Context, id: String) = databaseCall {
+        val conta = buscarContaInternal(context, id)
+        if (conta != null) NotificationScheduler.cancelConta(context, conta)
+        dao(context).remover(id)
+        saveAutomaticBackup(context)
+    }
+
+    fun marcarComoPago(context: Context, id: String) = databaseCall {
+        val conta = buscarContaInternal(context, id) ?: return@databaseCall
+        atualizarContaInternal(
+            context = context,
             conta.copy(
                 status = ContaStatus.PAGO,
                 pagoEm = System.currentTimeMillis()
@@ -179,10 +233,10 @@ object ContaStorage {
         )
     }
 
-    fun marcarComoPendente(context: Context, id: String) {
-        val conta = buscarConta(context, id) ?: return
-        atualizarConta(
-            context,
+    fun marcarComoPendente(context: Context, id: String) = databaseCall {
+        val conta = buscarContaInternal(context, id) ?: return@databaseCall
+        atualizarContaInternal(
+            context = context,
             conta.copy(
                 status = ContaStatus.PENDENTE,
                 pagoEm = null
@@ -190,12 +244,13 @@ object ContaStorage {
         )
     }
 
-    fun substituirTodas(context: Context, contas: List<ContaSalva>) {
+    fun substituirTodas(context: Context, contas: List<ContaSalva>) = databaseCall {
         val contaDao = dao(context)
         contaDao.limpar()
         contaDao.upsertAll(contas.map { it.toEntity() })
         contas.forEach { NotificationScheduler.scheduleConta(context, it) }
         salvarListaPrefs(context, contas)
+        saveAutomaticBackup(context)
     }
 
     private fun salvarListaPrefs(context: Context, contas: List<ContaSalva>) {
@@ -218,6 +273,8 @@ object ContaStorage {
                     .put("recorrencia", conta.recorrencia)
                     .put("comprovantePath", conta.comprovantePath)
                     .put("direcao", conta.direcao)
+                    .put("clienteWhatsapp", conta.clienteWhatsapp)
+                    .put("excluidaEm", conta.excluidaEm)
             )
         }
 
@@ -238,6 +295,14 @@ object ContaStorage {
 
     private fun dao(context: Context): ContaDao {
         return HsCashDatabase.get(context).contaDao()
+    }
+
+    private fun <T> databaseCall(block: () -> T): T {
+        return runBlocking(Dispatchers.IO) { block() }
+    }
+
+    private fun saveAutomaticBackup(context: Context) {
+        BackupHelper.saveAutomaticBackup(context, listarContasInternal(context))
     }
 
     private fun criarRecorrenciasFuturas(context: Context, conta: ContaSalva) {

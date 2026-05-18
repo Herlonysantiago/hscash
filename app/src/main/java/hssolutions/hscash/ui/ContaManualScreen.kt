@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -57,9 +58,12 @@ fun ContaManualScreen(
     var valor by remember { mutableStateOf("") }
     var vencimento by remember { mutableStateOf("") }
     var categoria by remember { mutableStateOf("") }
+    var clienteWhatsapp by remember { mutableStateOf("") }
     var recorrente by remember { mutableStateOf(false) }
     var recorrencia by remember { mutableStateOf("Mensal") }
     var erro by remember { mutableStateOf<String?>(null) }
+    var showClientes by remember { mutableStateOf(false) }
+    val clientes = remember { ClienteStorage.listarClientes(context) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
@@ -100,6 +104,18 @@ fun ContaManualScreen(
                 modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                if (isReceber && clientes.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { showClientes = true }) {
+                            Text("Selecionar cliente")
+                        }
+                        Text(
+                            text = if (fornecedor.isBlank()) "Nenhum cliente selecionado" else fornecedor,
+                            color = Color(0xFF6B7280),
+                            modifier = Modifier.padding(top = 12.dp)
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = fornecedor,
                     onValueChange = {
@@ -140,6 +156,16 @@ fun ContaManualScreen(
                     placeholder = { Text(if (isReceber) "Ex: Cliente, Servico, Venda" else "Ex: Aluguel, Luz, Internet") },
                     singleLine = true
                 )
+                if (isReceber) {
+                    OutlinedTextField(
+                        value = clienteWhatsapp,
+                        onValueChange = { clienteWhatsapp = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("WhatsApp do cliente") },
+                        placeholder = { Text("Ex: 11999999999") },
+                        singleLine = true
+                    )
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -196,7 +222,8 @@ fun ContaManualScreen(
                             categoria = categoria.ifBlank { "Outros" },
                             recorrente = recorrente,
                             recorrencia = recorrencia,
-                            direcao = direcao
+                            direcao = direcao,
+                            clienteWhatsapp = if (isReceber) clienteWhatsapp else null
                         )
                         if (salvou) {
                             Toast.makeText(context, if (isReceber) "Recebimento cadastrado" else "Conta cadastrada", Toast.LENGTH_SHORT).show()
@@ -211,6 +238,38 @@ fun ContaManualScreen(
         ) {
             Text(if (isReceber) "Salvar Recebimento" else "Salvar Conta")
         }
+    }
+
+    if (showClientes) {
+        AlertDialog(
+            onDismissRequest = { showClientes = false },
+            title = { Text("Selecionar cliente") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    clientes.forEach { cliente ->
+                        TextButton(
+                            onClick = {
+                                fornecedor = cliente.nome
+                                clienteWhatsapp = cliente.whatsapp
+                                if (categoria.isBlank()) categoria = "Cliente"
+                                showClientes = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(cliente.nome, fontWeight = FontWeight.Bold)
+                                Text(cliente.whatsapp.ifBlank { "Sem WhatsApp" }, color = Color(0xFF6B7280))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showClientes = false }) {
+                    Text("Fechar")
+                }
+            }
+        )
     }
 }
 

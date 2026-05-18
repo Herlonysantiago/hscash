@@ -29,7 +29,9 @@ data class ContaEntity(
     val recorrente: Boolean,
     val recorrencia: String,
     val comprovantePath: String?,
-    val direcao: String
+    val direcao: String,
+    val clienteWhatsapp: String?,
+    val excluidaEm: Long?
 )
 
 @Dao
@@ -58,7 +60,7 @@ interface ContaDao {
 
 @Database(
     entities = [ContaEntity::class],
-    version = 2,
+    version = 4,
     exportSchema = false
 )
 abstract class HsCashDatabase : RoomDatabase() {
@@ -74,8 +76,7 @@ abstract class HsCashDatabase : RoomDatabase() {
                     HsCashDatabase::class.java,
                     "hs_cash.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
-                    .allowMainThreadQueries()
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }
@@ -84,6 +85,18 @@ abstract class HsCashDatabase : RoomDatabase() {
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE contas ADD COLUMN direcao TEXT NOT NULL DEFAULT 'PAGAR'")
+            }
+        }
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE contas ADD COLUMN clienteWhatsapp TEXT")
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE contas ADD COLUMN excluidaEm INTEGER")
             }
         }
     }
@@ -105,7 +118,9 @@ fun ContaEntity.toContaSalva(): ContaSalva {
         recorrente = recorrente,
         recorrencia = recorrencia,
         comprovantePath = comprovantePath,
-        direcao = direcao
+        direcao = direcao,
+        clienteWhatsapp = clienteWhatsapp,
+        excluidaEm = excluidaEm
     )
 }
 
@@ -125,6 +140,8 @@ fun ContaSalva.toEntity(): ContaEntity {
         recorrente = recorrente,
         recorrencia = recorrencia,
         comprovantePath = comprovantePath,
-        direcao = direcao
+        direcao = direcao,
+        clienteWhatsapp = clienteWhatsapp,
+        excluidaEm = excluidaEm
     )
 }

@@ -58,7 +58,7 @@ private enum class ContaFiltro(val label: String) {
 }
 
 @Composable
-fun EstoqueScreen(
+fun ContasScreen(
     onContaClick: (String) -> Unit = {},
     onAddConta: (String) -> Unit = {}
 ) {

@@ -53,6 +53,7 @@ fun ContaDetalheScreen(
     var categoria by remember(conta?.id) { mutableStateOf(conta?.categoria.orEmpty()) }
     var valor by remember(conta?.id) { mutableStateOf(conta?.valor.orEmpty()) }
     var vencimento by remember(conta?.id) { mutableStateOf(conta?.vencimento.orEmpty()) }
+    var clienteWhatsapp by remember(conta?.id) { mutableStateOf(conta?.clienteWhatsapp.orEmpty()) }
     var recorrente by remember(conta?.id) { mutableStateOf(conta?.recorrente ?: false) }
     var recorrencia by remember(conta?.id) { mutableStateOf(conta?.recorrencia ?: "Mensal") }
     var erro by remember { mutableStateOf<String?>(null) }
@@ -160,6 +161,16 @@ fun ContaDetalheScreen(
                     singleLine = true,
                     isError = erro != null
                 )
+                if (contaAtual.direcao == ContaDirecao.RECEBER) {
+                    OutlinedTextField(
+                        value = clienteWhatsapp,
+                        onValueChange = { clienteWhatsapp = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("WhatsApp do cliente") },
+                        placeholder = { Text("Ex: 11999999999") },
+                        singleLine = true
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -201,6 +212,7 @@ fun ContaDetalheScreen(
                     categoria = categoria.ifBlank { "Outros" }.trim(),
                     valor = valor.trim(),
                     vencimento = vencimento.trim(),
+                    clienteWhatsapp = if (contaAtual.direcao == ContaDirecao.RECEBER) clienteWhatsapp.trim().takeIf { it.isNotBlank() } else null,
                     recorrente = recorrente,
                     recorrencia = recorrencia
                 )
@@ -247,6 +259,28 @@ fun ContaDetalheScreen(
             }
         }
 
+        if (contaAtual.direcao == ContaDirecao.RECEBER) {
+            Button(
+                onClick = {
+                    val atualizada = contaAtual.copy(
+                        fornecedor = fornecedor.trim(),
+                        categoria = categoria.ifBlank { "Outros" }.trim(),
+                        valor = valor.trim(),
+                        vencimento = vencimento.trim(),
+                        clienteWhatsapp = clienteWhatsapp.trim().takeIf { it.isNotBlank() },
+                        recorrente = recorrente,
+                        recorrencia = recorrencia
+                    )
+                    ContaStorage.atualizarConta(context, atualizada)
+                    conta = atualizada
+                    WhatsAppHelper.sendCharge(context, atualizada)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Enviar cobranca no WhatsApp")
+            }
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -287,18 +321,18 @@ fun ContaDetalheScreen(
     if (confirmarExclusao) {
         AlertDialog(
             onDismissRequest = { confirmarExclusao = false },
-            title = { Text("Excluir conta") },
-            text = { Text("Deseja remover esta conta da lista?") },
+            title = { Text("Mover para lixeira") },
+            text = { Text("A conta sera removida da lista principal, mas podera ser restaurada pela lixeira.") },
             confirmButton = {
                 Button(
                     onClick = {
                         ContaStorage.removerConta(context, contaId)
-                        Toast.makeText(context, "Conta excluida", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Conta movida para a lixeira", Toast.LENGTH_SHORT).show()
                         confirmarExclusao = false
                         onDeleted()
                     }
                 ) {
-                    Text("Excluir")
+                    Text("Mover")
                 }
             },
             dismissButton = {

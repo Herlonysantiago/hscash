@@ -6,6 +6,7 @@ import java.util.Locale
 
 fun statusLabel(conta: ContaSalva): String {
     return when {
+        conta.status == ContaStatus.EXCLUIDO -> "Na lixeira"
         conta.status == ContaStatus.PAGO && conta.direcao == ContaDirecao.RECEBER -> "Recebido"
         conta.status == ContaStatus.PAGO -> "Pago"
         isContaVencida(conta) -> "Atrasado"
@@ -16,6 +17,7 @@ fun statusLabel(conta: ContaSalva): String {
 
 fun statusColorHex(conta: ContaSalva): Long {
     return when {
+        conta.status == ContaStatus.EXCLUIDO -> 0xFF6B7280
         conta.status == ContaStatus.PAGO -> 0xFF388E3C
         isContaVencida(conta) -> 0xFFD32F2F
         else -> 0xFFF57C00
@@ -23,7 +25,7 @@ fun statusColorHex(conta: ContaSalva): Long {
 }
 
 fun isContaVencida(conta: ContaSalva): Boolean {
-    if (conta.status == ContaStatus.PAGO) return false
+    if (conta.status == ContaStatus.PAGO || conta.status == ContaStatus.EXCLUIDO) return false
     val vencimento = parseContaDate(conta.vencimento) ?: return false
     return vencimento.before(startOfToday())
 }
