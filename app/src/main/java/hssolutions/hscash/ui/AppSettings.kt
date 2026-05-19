@@ -11,6 +11,10 @@ object AppSettings {
     private const val KEY_REMINDER_DAYS = "reminder_days"
     private const val KEY_TODAY_SUMMARY_ENABLED = "today_summary_enabled"
     private const val KEY_TOMORROW_SUMMARY_ENABLED = "tomorrow_summary_enabled"
+    private const val KEY_OVERDUE_SUMMARY_ENABLED = "overdue_summary_enabled"
+    private const val KEY_OVERDUE_SUMMARY_HOURS = "overdue_summary_hours"
+    private const val KEY_TODAY_SUMMARY_HOURS = "today_summary_hours"
+    private const val KEY_TOMORROW_SUMMARY_HOURS = "tomorrow_summary_hours"
     private const val KEY_AUTO_LOCAL_BACKUP_ENABLED = "auto_local_backup_enabled"
     private const val KEY_LOCAL_BACKUP_FOLDER_URI = "local_backup_folder_uri"
     private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
@@ -66,6 +70,96 @@ object AppSettings {
         if (enabled) {
             NotificationScheduler.showTomorrowSummaryOnceIfDue(context)
         }
+    }
+
+    fun isOverdueSummaryEnabled(context: Context): Boolean {
+        return prefs(context).getBoolean(KEY_OVERDUE_SUMMARY_ENABLED, true)
+    }
+
+    fun setOverdueSummaryEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_OVERDUE_SUMMARY_ENABLED, enabled).apply()
+        NotificationScheduler.scheduleDailySummaries(context)
+        if (enabled) {
+            NotificationScheduler.showOverdueSummaryOnceIfDue(context)
+        }
+    }
+
+    fun overdueSummaryHours(context: Context): List<Int> {
+        return summaryTimes(context, KEY_OVERDUE_SUMMARY_HOURS, "8:00")
+    }
+
+    fun setOverdueSummaryHours(context: Context, value: String) {
+        setSummaryHours(context, KEY_OVERDUE_SUMMARY_HOURS, value, "8:00")
+    }
+
+    fun overdueSummaryHoursText(context: Context): String {
+        return summaryHoursText(context, KEY_OVERDUE_SUMMARY_HOURS, "8:00")
+    }
+
+    fun todaySummaryHours(context: Context): List<Int> {
+        return summaryTimes(context, KEY_TODAY_SUMMARY_HOURS, "8:00")
+    }
+
+    fun setTodaySummaryHours(context: Context, value: String) {
+        setSummaryHours(context, KEY_TODAY_SUMMARY_HOURS, value, "8:00")
+    }
+
+    fun todaySummaryHoursText(context: Context): String {
+        return summaryHoursText(context, KEY_TODAY_SUMMARY_HOURS, "8:00")
+    }
+
+    fun tomorrowSummaryHours(context: Context): List<Int> {
+        return summaryTimes(context, KEY_TOMORROW_SUMMARY_HOURS, "18:00")
+    }
+
+    fun setTomorrowSummaryHours(context: Context, value: String) {
+        setSummaryHours(context, KEY_TOMORROW_SUMMARY_HOURS, value, "18:00")
+    }
+
+    fun tomorrowSummaryHoursText(context: Context): String {
+        return summaryHoursText(context, KEY_TOMORROW_SUMMARY_HOURS, "18:00")
+    }
+
+    private fun setSummaryHours(context: Context, key: String, value: String, defaultValue: String) {
+        val sanitized = parseTimes(value).joinToString(", ") { formatTime(it) }
+        prefs(context).edit().putString(key, sanitized.ifBlank { defaultValue }).apply()
+        NotificationScheduler.scheduleDailySummaries(context)
+    }
+
+    private fun summaryTimes(context: Context, key: String, defaultValue: String): List<Int> {
+        return parseTimes(summaryHoursText(context, key, defaultValue)).ifEmpty { parseTimes(defaultValue) }
+    }
+
+    private fun summaryHoursText(context: Context, key: String, defaultValue: String): String {
+        return prefs(context).getString(key, defaultValue).orEmpty().ifBlank { defaultValue }
+    }
+
+    private fun parseTimes(value: String): List<Int> {
+        return value
+            .split(",", ";")
+            .mapNotNull { raw ->
+                val part = raw.trim()
+                when {
+                    part.contains(":") -> {
+                        val hour = part.substringBefore(":").trim().toIntOrNull()
+                        val minute = part.substringAfter(":").trim().toIntOrNull()
+                        if (hour != null && minute != null && hour in 0..23 && minute in 0..59) {
+                            hour * 60 + minute
+                        } else {
+                            null
+                        }
+                    }
+                    else -> part.toIntOrNull()?.takeIf { it in 0..23 }?.let { it * 60 }
+                }
+            }
+            .distinct()
+            .sorted()
+    }
+
+    private fun formatTime(minutesOfDay: Int): String {
+        val hour = minutesOfDay / 60
+        val minute = minutesOfDay % 60
+        return "%d:%02d".format(hour, minute)
     }
 
     fun isAutoLocalBackupEnabled(context: Context): Boolean {

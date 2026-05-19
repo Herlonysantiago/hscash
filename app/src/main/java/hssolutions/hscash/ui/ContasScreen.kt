@@ -83,6 +83,7 @@ fun ContasScreen(
     val contasFiltradas = contasDaDirecao
         .filter { it.matchesSearch(busca) }
         .filter { it.matchesFilter(filtro) }
+        .sortedWith(compareBy<ContaSalva> { parseContaDate(it.vencimento)?.timeInMillis ?: Long.MAX_VALUE }.thenByDescending { it.criadaEm })
     val isReceber = direcao == ContaDirecao.RECEBER
 
     Column(

@@ -25,18 +25,24 @@ object NotificationScheduler {
     private const val CHANNEL_ID = "contas_vencimento"
     private const val ACTION_TODAY_SUMMARY = "hssolutions.hscash.ACTION_TODAY_SUMMARY"
     private const val ACTION_TOMORROW_SUMMARY = "hssolutions.hscash.ACTION_TOMORROW_SUMMARY"
+    private const val ACTION_OVERDUE_SUMMARY = "hssolutions.hscash.ACTION_OVERDUE_SUMMARY"
     private const val PREFS_NAME = "hs_cash_notification_state"
+    private const val KEY_SCHEDULED_TODAY_SUMMARY_TIMES = "scheduled_today_summary_times"
+    private const val KEY_SCHEDULED_TOMORROW_SUMMARY_TIMES = "scheduled_tomorrow_summary_times"
+    private const val KEY_SCHEDULED_OVERDUE_SUMMARY_TIMES = "scheduled_overdue_summary_times"
     private const val KEY_LAST_TODAY_SUMMARY = "last_today_summary"
     private const val KEY_LAST_TOMORROW_SUMMARY = "last_tomorrow_summary"
+    private const val KEY_LAST_OVERDUE_SUMMARY = "last_overdue_summary"
     private const val EXTRA_CONTA_ID = "contaId"
+    const val EXTRA_DASHBOARD_FILTER = "dashboardFilter"
     private const val EXTRA_TITLE = "title"
     private const val EXTRA_MESSAGE = "message"
     private const val TODAY_SUMMARY_REQUEST_CODE = 9010
     private const val TODAY_SUMMARY_NOTIFICATION_ID = 9011
     private const val TOMORROW_SUMMARY_REQUEST_CODE = 9012
     private const val TOMORROW_SUMMARY_NOTIFICATION_ID = 9013
-    private const val TODAY_SUMMARY_HOUR = 8
-    private const val TOMORROW_SUMMARY_HOUR = 18
+    private const val OVERDUE_SUMMARY_REQUEST_CODE = 9014
+    private const val OVERDUE_SUMMARY_NOTIFICATION_ID = 9015
 
     fun scheduleConta(context: Context, conta: ContaSalva) {
         scheduleDailySummaries(context)
@@ -74,6 +80,7 @@ object NotificationScheduler {
     fun scheduleDailySummaries(context: Context) {
         scheduleDailyTodaySummary(context)
         scheduleDailyTomorrowSummary(context)
+        scheduleDailyOverdueSummary(context)
     }
 
     fun scheduleDailyTodaySummary(context: Context) {
@@ -81,7 +88,8 @@ object NotificationScheduler {
             context = context,
             action = ACTION_TODAY_SUMMARY,
             requestCode = TODAY_SUMMARY_REQUEST_CODE,
-            hour = TODAY_SUMMARY_HOUR,
+            scheduledKey = KEY_SCHEDULED_TODAY_SUMMARY_TIMES,
+            hours = AppSettings.todaySummaryHours(context),
             enabled = AppSettings.isTodaySummaryEnabled(context)
         )
     }
@@ -91,8 +99,20 @@ object NotificationScheduler {
             context = context,
             action = ACTION_TOMORROW_SUMMARY,
             requestCode = TOMORROW_SUMMARY_REQUEST_CODE,
-            hour = TOMORROW_SUMMARY_HOUR,
+            scheduledKey = KEY_SCHEDULED_TOMORROW_SUMMARY_TIMES,
+            hours = AppSettings.tomorrowSummaryHours(context),
             enabled = AppSettings.isTomorrowSummaryEnabled(context)
+        )
+    }
+
+    fun scheduleDailyOverdueSummary(context: Context) {
+        scheduleDailySummary(
+            context = context,
+            action = ACTION_OVERDUE_SUMMARY,
+            requestCode = OVERDUE_SUMMARY_REQUEST_CODE,
+            scheduledKey = KEY_SCHEDULED_OVERDUE_SUMMARY_TIMES,
+            hours = AppSettings.overdueSummaryHours(context),
+            enabled = AppSettings.isOverdueSummaryEnabled(context)
         )
     }
 
@@ -100,65 +120,97 @@ object NotificationScheduler {
         context: Context,
         action: String,
         requestCode: Int,
-        hour: Int,
+        scheduledKey: String,
+        hours: List<Int>,
         enabled: Boolean
     ) {
         if (!enabled) {
-            cancelDailySummary(context, action, requestCode)
+            cancelDailySummary(context, action, requestCode, scheduledKey)
             return
         }
 
-        val triggerAt = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            if (timeInMillis <= System.currentTimeMillis()) {
-                add(Calendar.DAY_OF_YEAR, 1)
+        cancelDailySummary(context, action, requestCode, scheduledKey)
+
+        hours.forEach { minutesOfDay ->
+            val triggerAt = Calendar.getInstance().apply {
+                val hour = minutesOfDay / 60
+                val minute = minutesOfDay % 60
+                set(Calendar.HOUR_OF_DAY, hour)
+                set(Calendar.MINUTE, minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                if (timeInMillis <= System.currentTimeMillis()) {
+                    add(Calendar.DAY_OF_YEAR, 1)
+                }
+            }
+
+            val intent = Intent(context, NotificationReceiver::class.java)
+                .setAction(action)
+
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                dailyRequestCode(requestCode, minutesOfDay),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAt.timeInMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.set(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAt.timeInMillis,
+                    pendingIntent
+                )
             }
         }
 
-        val intent = Intent(context, NotificationReceiver::class.java)
-            .setAction(action)
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        alarmManager.setInexactRepeating(
-            AlarmManager.RTC_WAKEUP,
-            triggerAt.timeInMillis,
-            AlarmManager.INTERVAL_DAY,
-            pendingIntent
-        )
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(scheduledKey, hours.joinToString(","))
+            .apply()
     }
 
-    private fun cancelDailySummary(context: Context, action: String, requestCode: Int) {
-        val intent = Intent(context, NotificationReceiver::class.java).setAction(action)
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+    private fun cancelDailySummary(context: Context, action: String, requestCode: Int, scheduledKey: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val scheduledTimes = prefs.getString(scheduledKey, "").orEmpty()
+            .split(",")
+            .mapNotNull { it.toIntOrNull() }
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        alarmManager.cancel(pendingIntent)
-        pendingIntent.cancel()
+        scheduledTimes.forEach { minutesOfDay ->
+            val intent = Intent(context, NotificationReceiver::class.java).setAction(action)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                dailyRequestCode(requestCode, minutesOfDay),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+        }
+        prefs.edit().remove(scheduledKey).apply()
     }
 
     fun showTodaySummaryOnceIfDue(context: Context): Boolean {
-        return showSummaryOnceIfDue(context, TODAY_SUMMARY_HOUR, KEY_LAST_TODAY_SUMMARY) {
+        return showSummaryOnceIfDue(context, AppSettings.todaySummaryHours(context), KEY_LAST_TODAY_SUMMARY) {
             showTodaySummary(it)
         }
     }
 
     fun showTomorrowSummaryOnceIfDue(context: Context): Boolean {
-        return showSummaryOnceIfDue(context, TOMORROW_SUMMARY_HOUR, KEY_LAST_TOMORROW_SUMMARY) {
+        return showSummaryOnceIfDue(context, AppSettings.tomorrowSummaryHours(context), KEY_LAST_TOMORROW_SUMMARY) {
             showTomorrowSummary(it)
+        }
+    }
+
+    fun showOverdueSummaryOnceIfDue(context: Context): Boolean {
+        return showSummaryOnceIfDue(context, AppSettings.overdueSummaryHours(context), KEY_LAST_OVERDUE_SUMMARY) {
+            showOverdueSummary(it)
         }
     }
 
@@ -171,7 +223,8 @@ object NotificationScheduler {
             multipleTitle = { count -> "$count contas vencem hoje" },
             totalMessage = "Total a pagar hoje",
             totalDetails = "Total hoje",
-            notificationId = TODAY_SUMMARY_NOTIFICATION_ID
+            notificationId = TODAY_SUMMARY_NOTIFICATION_ID,
+            dashboardFilter = DashboardFilter.HOJE.name
         )
     }
 
@@ -184,8 +237,89 @@ object NotificationScheduler {
             multipleTitle = { count -> "$count contas vencem amanha" },
             totalMessage = "Total para amanha",
             totalDetails = "Total amanha",
-            notificationId = TOMORROW_SUMMARY_NOTIFICATION_ID
+            notificationId = TOMORROW_SUMMARY_NOTIFICATION_ID,
+            dashboardFilter = DashboardFilter.AMANHA.name
         )
+    }
+
+    fun showOverdueSummary(context: Context): Boolean {
+        if (!AppSettings.isOverdueSummaryEnabled(context) || !canPostNotifications(context)) return false
+
+        val today = startOfDay()
+        val contas = ContaStorage.listarContas(context)
+            .filter { conta ->
+                conta.direcao == ContaDirecao.PAGAR &&
+                    conta.status != ContaStatus.PAGO &&
+                    parseDate(conta.vencimento)?.before(today) == true
+            }
+
+        if (contas.isEmpty()) return false
+
+        ensureChannel(context)
+
+        val total = formatMoney(contas.sumOf { parseValorCentavos(it.valor) })
+        val title = if (contas.size == 1) "Conta vencida" else "${contas.size} contas vencidas"
+        val message = if (contas.size == 1) {
+            val conta = contas.first()
+            "${displayName(conta)} - ${conta.valor}"
+        } else {
+            "Total vencido: $total"
+        }
+        val details = buildString {
+            contas
+                .sortedBy { parseDate(it.vencimento)?.timeInMillis ?: Long.MAX_VALUE }
+                .take(4)
+                .forEach { conta ->
+                    append(displayName(conta))
+                    append(" - ")
+                    append(conta.valor)
+                    append(" - venceu em ")
+                    append(conta.vencimento)
+                    append('\n')
+                }
+            if (contas.size > 4) {
+                append("+")
+                append(contas.size - 4)
+                append(" contas\n")
+            }
+            append("Total vencido: ")
+            append(total)
+        }
+
+        val notification = notificationBuilder(
+            context = context,
+            title = title,
+            message = message,
+            dashboardFilter = DashboardFilter.VENCIDAS.name
+        )
+            .setStyle(NotificationCompat.BigTextStyle().bigText(details))
+            .build()
+
+        NotificationManagerCompat.from(context).notify(OVERDUE_SUMMARY_NOTIFICATION_ID, notification)
+        return true
+    }
+
+    fun showTestNotification(context: Context): Boolean {
+        if (!canPostNotifications(context)) return false
+        ensureChannel(context)
+
+        val notification = notificationBuilder(
+            context = context,
+            title = "Teste HS Cash",
+            message = "As notificacoes estao funcionando neste aparelho."
+        ).build()
+
+        NotificationManagerCompat.from(context).notify("hs-cash-test".hashCode(), notification)
+        return true
+    }
+
+    fun resetSummaryShownState(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_LAST_TODAY_SUMMARY)
+            .remove(KEY_LAST_TOMORROW_SUMMARY)
+            .remove(KEY_LAST_OVERDUE_SUMMARY)
+            .apply()
     }
 
     private fun schedule(context: Context, conta: ContaSalva, dueDate: Calendar, dayOffset: Int, title: String) {
@@ -243,16 +377,25 @@ object NotificationScheduler {
         }
     }
 
+    private fun startOfDay(): Calendar {
+        return Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+    }
+
     private fun showSummaryOnceIfDue(
         context: Context,
-        hour: Int,
+        hours: List<Int>,
         lastShownKey: String,
         showSummary: (Context) -> Boolean
     ): Boolean {
-        if (!isSummaryTimeReached(hour)) return false
+        val dueTime = latestDueTime(hours) ?: return false
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val key = todayKey()
+        val key = "${todayKey()}-$dueTime"
         if (prefs.getString(lastShownKey, "") == key) return false
 
         val shown = showSummary(context)
@@ -270,7 +413,8 @@ object NotificationScheduler {
         multipleTitle: (Int) -> String,
         totalMessage: String,
         totalDetails: String,
-        notificationId: Int
+        notificationId: Int,
+        dashboardFilter: String
     ): Boolean {
         if (!enabled || !canPostNotifications(context)) return false
 
@@ -310,7 +454,12 @@ object NotificationScheduler {
             append(total)
         }
 
-        val notification = notificationBuilder(context, title, message)
+        val notification = notificationBuilder(
+            context = context,
+            title = title,
+            message = message,
+            dashboardFilter = dashboardFilter
+        )
             .setStyle(NotificationCompat.BigTextStyle().bigText(details))
             .build()
 
@@ -342,8 +491,14 @@ object NotificationScheduler {
         return conta.fornecedor.ifBlank { conta.banco }.ifBlank { "Conta" }
     }
 
-    private fun isSummaryTimeReached(hour: Int): Boolean {
-        return Calendar.getInstance().get(Calendar.HOUR_OF_DAY) >= hour
+    private fun latestDueTime(times: List<Int>): Int? {
+        val now = Calendar.getInstance()
+        val currentMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+        return times.filter { currentMinutes >= it }.maxOrNull()
+    }
+
+    private fun dailyRequestCode(baseRequestCode: Int, minutesOfDay: Int): Int {
+        return "$baseRequestCode:$minutesOfDay".hashCode()
     }
 
     private fun todayKey(): String {
@@ -353,12 +508,21 @@ object NotificationScheduler {
     private fun notificationBuilder(
         context: Context,
         title: String,
-        message: String
+        message: String,
+        contaId: String? = null,
+        dashboardFilter: String? = null
     ): NotificationCompat.Builder {
-        val openIntent = Intent(context, MainActivity::class.java)
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            if (!contaId.isNullOrBlank()) {
+                putExtra(EXTRA_CONTA_ID, contaId)
+            }
+            if (!dashboardFilter.isNullOrBlank()) {
+                putExtra(EXTRA_DASHBOARD_FILTER, dashboardFilter)
+            }
+        }
         val pendingOpenIntent = PendingIntent.getActivity(
             context,
-            0,
+            contaId?.hashCode() ?: 0,
             openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -382,11 +546,15 @@ object NotificationScheduler {
 
     internal fun isTomorrowSummaryAction(action: String?): Boolean = action == ACTION_TOMORROW_SUMMARY
 
+    internal fun isOverdueSummaryAction(action: String?): Boolean = action == ACTION_OVERDUE_SUMMARY
+
     internal fun buildNotification(
         context: Context,
         title: String,
-        message: String
-    ): NotificationCompat.Builder = notificationBuilder(context, title, message)
+        message: String,
+        contaId: String? = null,
+        dashboardFilter: String? = null
+    ): NotificationCompat.Builder = notificationBuilder(context, title, message, contaId, dashboardFilter)
 
     internal fun channelId(): String = CHANNEL_ID
 }
@@ -399,11 +567,19 @@ class NotificationReceiver : BroadcastReceiver() {
 
         if (NotificationScheduler.isTodaySummaryAction(intent.action)) {
             NotificationScheduler.showTodaySummaryOnceIfDue(context)
+            NotificationScheduler.scheduleDailyTodaySummary(context)
             return
         }
 
         if (NotificationScheduler.isTomorrowSummaryAction(intent.action)) {
             NotificationScheduler.showTomorrowSummaryOnceIfDue(context)
+            NotificationScheduler.scheduleDailyTomorrowSummary(context)
+            return
+        }
+
+        if (NotificationScheduler.isOverdueSummaryAction(intent.action)) {
+            NotificationScheduler.showOverdueSummaryOnceIfDue(context)
+            NotificationScheduler.scheduleDailyOverdueSummary(context)
             return
         }
 
@@ -411,7 +587,8 @@ class NotificationReceiver : BroadcastReceiver() {
 
         val title = intent.getStringExtra("title") ?: "Conta perto do vencimento"
         val message = intent.getStringExtra("message") ?: "Confira suas contas no HS Cash."
-        val notification = NotificationScheduler.buildNotification(context, title, message)
+        val contaId = intent.getStringExtra("contaId")
+        val notification = NotificationScheduler.buildNotification(context, title, message, contaId)
             .build()
 
         NotificationManagerCompat.from(context).notify(message.hashCode(), notification)

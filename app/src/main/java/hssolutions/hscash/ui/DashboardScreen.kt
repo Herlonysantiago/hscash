@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -58,12 +60,15 @@ import java.util.Calendar
 import java.util.Locale
 
 @Composable
-fun DashboardScreen() {
+fun DashboardScreen(initialFilter: String? = null) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var contas by remember { mutableStateOf(ContaStorage.listarContas(context)) }
     var dashboardAllMonths by remember { mutableStateOf(false) }
     var dashboardMonth by remember { mutableStateOf(startOfDay().apply { set(Calendar.DAY_OF_MONTH, 1) }) }
+    var selectedFilter by remember {
+        mutableStateOf(initialFilter?.let { DashboardFilter.fromRouteValue(it) })
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -85,6 +90,9 @@ fun DashboardScreen() {
     val proximasContas = remember(contas, dashboardMonth, dashboardAllMonths) {
         val pagar = contas.filter { it.direcao == ContaDirecao.PAGAR }
         proximasContas(if (dashboardAllMonths) pagar else pagar.filter { it.isInMonth(dashboardMonth) })
+    }
+    val selectedAccounts = remember(contas, dashboardMonth, dashboardAllMonths, selectedFilter) {
+        selectedFilter?.let { filterDashboardAccounts(contas, dashboardMonth, dashboardAllMonths, it) }.orEmpty()
     }
 
     LazyColumn(
@@ -117,21 +125,51 @@ fun DashboardScreen() {
                 onPreviousMonth = {
                     dashboardMonth = dashboardMonth.copyWithMonthOffset(-1)
                     dashboardAllMonths = false
+                    selectedFilter = null
                 },
                 onNextMonth = {
                     dashboardMonth = dashboardMonth.copyWithMonthOffset(1)
                     dashboardAllMonths = false
+                    selectedFilter = null
                 },
-                onCurrentMonth = { dashboardAllMonths = false },
-                onAllMonths = { dashboardAllMonths = true }
+                onCurrentMonth = {
+                    dashboardAllMonths = false
+                    selectedFilter = null
+                },
+                onAllMonths = {
+                    dashboardAllMonths = true
+                    selectedFilter = null
+                }
             )
+        }
+
+        if (selectedFilter != null) {
+            item {
+                DashboardAccountsListHeader(
+                    title = selectedFilter!!.title,
+                    count = selectedAccounts.size,
+                    onBack = { selectedFilter = null }
+                )
+            }
+
+            if (selectedAccounts.isEmpty()) {
+                item {
+                    EmptyFilteredCard(selectedFilter!!.emptyMessage)
+                }
+            } else {
+                items(selectedAccounts, key = { it.id }) { conta ->
+                    DashboardContaCard(conta)
+                }
+            }
+            return@LazyColumn
         }
 
         item {
             TotalCard(
                 total = resumo.totalValor,
                 quantidade = resumo.totalContas,
-                proximoVencimento = resumo.proximoVencimento
+                proximoVencimento = resumo.proximoVencimento,
+                onClick = { selectedFilter = DashboardFilter.TOTAL_PAGAR }
             )
         }
 
@@ -145,7 +183,8 @@ fun DashboardScreen() {
                     value = resumo.totalReceber,
                     icon = Icons.Default.AccountBalanceWallet,
                     color = Color(0xFF0B6B2B),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    onClick = { selectedFilter = DashboardFilter.A_RECEBER }
                 )
                 MetricCard(
                     title = "Saldo previsto",
@@ -167,14 +206,16 @@ fun DashboardScreen() {
                     value = resumo.hoje.toString(),
                     icon = Icons.Default.Today,
                     color = Color(0xFFF57C00),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    onClick = { selectedFilter = DashboardFilter.HOJE }
                 )
                 MetricCard(
                     title = "Vencidas",
                     value = resumo.vencidas.toString(),
                     icon = Icons.Default.EventBusy,
                     color = Color(0xFFD32F2F),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    onClick = { selectedFilter = DashboardFilter.VENCIDAS }
                 )
             }
         }
@@ -189,14 +230,16 @@ fun DashboardScreen() {
                     value = resumo.totalPagoMes,
                     icon = Icons.Default.CheckCircle,
                     color = Color(0xFF388E3C),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    onClick = { selectedFilter = DashboardFilter.PAGO_MES }
                 )
                 MetricCard(
                     title = "No prazo",
                     value = resumo.noPrazo.toString(),
                     icon = Icons.Default.EventAvailable,
                     color = Color(0xFF1565C0),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    onClick = { selectedFilter = DashboardFilter.NO_PRAZO }
                 )
             }
         }
@@ -205,11 +248,11 @@ fun DashboardScreen() {
             SectionTitle("Situacao dos vencimentos")
         }
 
-        item { StatusContaCard("Vencidas", resumo.vencidas.toString(), "Exigem atencao imediata", Color(0xFFD32F2F), Icons.Default.ErrorOutline) }
-        item { StatusContaCard("Vencendo Hoje", resumo.hoje.toString(), "Contas para resolver hoje", Color(0xFFF57C00), Icons.Default.Today) }
-        item { StatusContaCard("Vence Amanha", resumo.amanha.toString(), "Planejamento de curto prazo", Color(0xFFFBC02D), Icons.Default.WarningAmber) }
-        item { StatusContaCard("Vence neste Mes", resumo.nesteMes.toString(), "Ainda dentro do mes atual", Color(0xFF7B1FA2), Icons.Default.CalendarMonth) }
-        item { StatusContaCard("No Prazo", resumo.noPrazo.toString(), "Sem urgencia neste momento", Color(0xFF388E3C), Icons.Default.CheckCircle) }
+        item { StatusContaCard("Vencidas", resumo.vencidas.toString(), "Exigem atencao imediata", Color(0xFFD32F2F), Icons.Default.ErrorOutline) { selectedFilter = DashboardFilter.VENCIDAS } }
+        item { StatusContaCard("Vencendo Hoje", resumo.hoje.toString(), "Contas para resolver hoje", Color(0xFFF57C00), Icons.Default.Today) { selectedFilter = DashboardFilter.HOJE } }
+        item { StatusContaCard("Vence Amanha", resumo.amanha.toString(), "Planejamento de curto prazo", Color(0xFFFBC02D), Icons.Default.WarningAmber) { selectedFilter = DashboardFilter.AMANHA } }
+        item { StatusContaCard("Vence neste Mes", resumo.nesteMes.toString(), "Ainda dentro do mes atual", Color(0xFF7B1FA2), Icons.Default.CalendarMonth) { selectedFilter = DashboardFilter.NESTE_MES } }
+        item { StatusContaCard("No Prazo", resumo.noPrazo.toString(), "Sem urgencia neste momento", Color(0xFF388E3C), Icons.Default.CheckCircle) { selectedFilter = DashboardFilter.NO_PRAZO } }
 
         item {
             SectionTitle("Proximas contas a pagar")
@@ -228,9 +271,10 @@ fun DashboardScreen() {
 }
 
 @Composable
-private fun TotalCard(total: String, quantidade: Int, proximoVencimento: String) {
+private fun TotalCard(total: String, quantidade: Int, proximoVencimento: String, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = Color(0xFF102A43)),
         shape = RoundedCornerShape(8.dp)
     ) {
@@ -295,14 +339,10 @@ private fun MetricCard(
     value: String,
     icon: ImageVector,
     color: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
 ) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
-        shape = RoundedCornerShape(8.dp)
-    ) {
+    val content: @Composable ColumnScope.() -> Unit = {
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -325,6 +365,24 @@ private fun MetricCard(
                 color = Color(0xFF6B7280)
             )
         }
+    }
+    if (onClick == null) {
+        Card(
+            modifier = modifier,
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+            shape = RoundedCornerShape(8.dp),
+            content = content
+        )
+    } else {
+        Card(
+            modifier = modifier,
+            onClick = onClick,
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+            shape = RoundedCornerShape(8.dp),
+            content = content
+        )
     }
 }
 
@@ -411,10 +469,12 @@ fun StatusContaCard(
     quantidade: String,
     descricao: String,
     cor: Color,
-    icon: ImageVector
+    icon: ImageVector,
+    onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
         shape = RoundedCornerShape(8.dp)
@@ -459,6 +519,93 @@ fun StatusContaCard(
                 color = cor
             )
         }
+    }
+}
+
+@Composable
+private fun DashboardAccountsListHeader(title: String, count: Int, onBack: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("$count conta(s) encontrada(s) nesta selecao", color = Color(0xFF6B7280))
+            }
+            TextButton(onClick = onBack) {
+                Text("Voltar ao dashboard")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardContaCard(conta: ContaSalva) {
+    val isReceber = conta.direcao == ContaDirecao.RECEBER
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (isReceber) Icons.Default.AccountBalanceWallet else Icons.Default.EventAvailable,
+                contentDescription = null,
+                tint = if (isReceber) Color(0xFF0B6B2B) else Color(0xFF1565C0),
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = conta.fornecedor.ifBlank { conta.banco },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF111827)
+                )
+                Text(
+                    text = "${if (isReceber) "Receber" else "Pagar"} - ${statusLabel(conta)} - ${conta.vencimento}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF6B7280)
+                )
+            }
+            Text(
+                text = conta.valor,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (isReceber) Color(0xFF0B6B2B) else Color(0xFFD32F2F)
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyFilteredCard(message: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFF6B7280),
+            modifier = Modifier.padding(16.dp)
+        )
     }
 }
 
@@ -523,6 +670,23 @@ private fun EmptyStateCard() {
     }
 }
 
+enum class DashboardFilter(val title: String, val emptyMessage: String) {
+    TOTAL_PAGAR("Total a pagar", "Nenhuma conta a pagar neste periodo."),
+    A_RECEBER("Contas a receber", "Nenhuma conta a receber neste periodo."),
+    PAGO_MES("Pagas no mes", "Nenhuma conta paga neste periodo."),
+    VENCIDAS("Contas vencidas", "Nenhuma conta vencida neste periodo."),
+    HOJE("Contas para hoje", "Nenhuma conta vence hoje neste periodo."),
+    AMANHA("Contas para amanha", "Nenhuma conta vence amanha neste periodo."),
+    NESTE_MES("Contas que vencem neste mes", "Nenhuma conta restante neste mes."),
+    NO_PRAZO("Contas no prazo", "Nenhuma conta no prazo neste periodo.");
+
+    companion object {
+        fun fromRouteValue(value: String): DashboardFilter? {
+            return entries.firstOrNull { it.name == value }
+        }
+    }
+}
+
 private data class ContaResumo(
     val totalContas: Int,
     val totalValor: String,
@@ -583,6 +747,39 @@ private data class ContaResumo(
             )
         }
     }
+}
+
+private fun filterDashboardAccounts(
+    contas: List<ContaSalva>,
+    month: Calendar,
+    allMonths: Boolean,
+    filter: DashboardFilter
+): List<ContaSalva> {
+    val hoje = startOfDay()
+    val amanha = startOfDay().apply { add(Calendar.DAY_OF_YEAR, 1) }
+    val contasPeriodo = if (allMonths) contas else contas.filter { it.isInMonth(month) }
+
+    return contasPeriodo
+        .filter { conta ->
+            val vencimento = parseVencimento(conta.vencimento)
+            when (filter) {
+                DashboardFilter.TOTAL_PAGAR -> conta.direcao == ContaDirecao.PAGAR && conta.status != ContaStatus.PAGO
+                DashboardFilter.A_RECEBER -> conta.direcao == ContaDirecao.RECEBER && conta.status != ContaStatus.PAGO
+                DashboardFilter.PAGO_MES -> conta.direcao == ContaDirecao.PAGAR && conta.status == ContaStatus.PAGO && if (allMonths) true else paidInMonth(conta, month)
+                DashboardFilter.VENCIDAS -> conta.direcao == ContaDirecao.PAGAR && conta.status != ContaStatus.PAGO && vencimento?.before(hoje) == true
+                DashboardFilter.HOJE -> conta.direcao == ContaDirecao.PAGAR && conta.status != ContaStatus.PAGO && vencimento?.let { sameDay(it, hoje) } == true
+                DashboardFilter.AMANHA -> conta.direcao == ContaDirecao.PAGAR && conta.status != ContaStatus.PAGO && vencimento?.let { sameDay(it, amanha) } == true
+                DashboardFilter.NESTE_MES -> conta.direcao == ContaDirecao.PAGAR &&
+                    conta.status != ContaStatus.PAGO &&
+                    vencimento != null &&
+                    sameMonth(vencimento, hoje) &&
+                    vencimento.after(amanha)
+                DashboardFilter.NO_PRAZO -> conta.direcao == ContaDirecao.PAGAR &&
+                    conta.status != ContaStatus.PAGO &&
+                    (vencimento == null || vencimento.after(amanha) && !sameMonth(vencimento, hoje))
+            }
+        }
+        .sortedWith(compareBy<ContaSalva> { parseVencimento(it.vencimento)?.timeInMillis ?: Long.MAX_VALUE }.thenBy { conta -> conta.fornecedor.ifBlank { conta.banco } })
 }
 
 private fun proximasContas(contas: List<ContaSalva>): List<ContaSalva> {

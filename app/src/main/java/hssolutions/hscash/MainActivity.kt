@@ -3,7 +3,6 @@ package hssolutions.hscash
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
@@ -17,6 +16,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +54,7 @@ import hssolutions.hscash.ui.HistoricoScreen
 import hssolutions.hscash.ui.LixeiraScreen
 import hssolutions.hscash.ui.MaisScreen
 import hssolutions.hscash.ui.NotificationScheduler
+import hssolutions.hscash.ui.NotificationScheduler.EXTRA_DASHBOARD_FILTER
 import hssolutions.hscash.ui.OnboardingScreen
 import hssolutions.hscash.ui.AppSettings
 import hssolutions.hscash.ui.RelatorioScreen
@@ -62,13 +63,15 @@ import hssolutions.hscash.ui.theme.HsCashTheme
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         NotificationScheduler.scheduleDailySummaries(this)
+        NotificationScheduler.showOverdueSummaryOnceIfDue(this)
         NotificationScheduler.showTodaySummaryOnceIfDue(this)
         NotificationScheduler.showTomorrowSummaryOnceIfDue(this)
         setContent {
             HsCashTheme {
                 MainScreen(
+                    initialContaId = intent.getStringExtra("contaId"),
+                    initialDashboardFilter = intent.getStringExtra(EXTRA_DASHBOARD_FILTER),
                     onBiometricAuth = { onSuccess, onError ->
                         showBiometricPrompt(onSuccess, onError)
                     }
@@ -138,6 +141,8 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 
 @Composable
 fun MainScreen(
+    initialContaId: String? = null,
+    initialDashboardFilter: String? = null,
     onBiometricAuth: (() -> Unit, (String) -> Unit) -> Unit
 ) {
     val navController = rememberNavController()
@@ -145,6 +150,8 @@ fun MainScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     var onboardingDone by remember { mutableStateOf(AppSettings.isOnboardingDone(context)) }
     var unlocked by remember { mutableStateOf(!AppSettings.isAppLockEnabled(context)) }
+    var pendingContaId by remember { mutableStateOf(initialContaId) }
+    var pendingDashboardFilter by remember { mutableStateOf(initialDashboardFilter) }
     val items = listOf(Screen.Dashboard, Screen.Contas, Screen.Boletos, Screen.Historico, Screen.Mais)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -215,7 +222,7 @@ fun MainScreen(
             startDestination = Screen.Dashboard.route,
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Dashboard.route) { DashboardScreen() }
+            composable(Screen.Dashboard.route) { DashboardScreen(initialFilter = pendingDashboardFilter) }
             composable(Screen.Contas.route) {
                 ContasScreen(
                     onContaClick = { id ->
@@ -305,6 +312,25 @@ fun MainScreen(
                         }
                     }
                 )
+            }
+        }
+
+        LaunchedEffect(pendingContaId, unlocked, onboardingDone) {
+            val contaId = pendingContaId
+            if (!contaId.isNullOrBlank() && unlocked && onboardingDone) {
+                navController.navigate(Screen.ContaDetalhe.createRoute(contaId)) {
+                    launchSingleTop = true
+                }
+                pendingContaId = null
+            }
+        }
+
+        LaunchedEffect(pendingDashboardFilter, unlocked, onboardingDone) {
+            val filter = pendingDashboardFilter
+            if (!filter.isNullOrBlank() && unlocked && onboardingDone) {
+                navController.navigate(Screen.Dashboard.route) {
+                    launchSingleTop = true
+                }
             }
         }
     }

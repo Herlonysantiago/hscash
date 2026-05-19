@@ -88,6 +88,10 @@ fun ConfiguracoesScreen(
     var reminders by remember { mutableStateOf(AppSettings.reminderDays(context)) }
     var todaySummary by remember { mutableStateOf(AppSettings.isTodaySummaryEnabled(context)) }
     var tomorrowSummary by remember { mutableStateOf(AppSettings.isTomorrowSummaryEnabled(context)) }
+    var overdueSummary by remember { mutableStateOf(AppSettings.isOverdueSummaryEnabled(context)) }
+    var overdueSummaryHours by remember { mutableStateOf(AppSettings.overdueSummaryHoursText(context)) }
+    var todaySummaryHours by remember { mutableStateOf(AppSettings.todaySummaryHoursText(context)) }
+    var tomorrowSummaryHours by remember { mutableStateOf(AppSettings.tomorrowSummaryHoursText(context)) }
     var autoLocalBackup by remember { mutableStateOf(AppSettings.isAutoLocalBackupEnabled(context)) }
     var localBackupLocation by remember { mutableStateOf(BackupHelper.localBackupLocationLabel(context)) }
     var appLockEnabled by remember { mutableStateOf(AppSettings.isAppLockEnabled(context)) }
@@ -95,6 +99,7 @@ fun ConfiguracoesScreen(
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var showPrivacyPolicy by remember { mutableStateOf(false) }
+    var notificationTestMessage by remember { mutableStateOf<String?>(null) }
     val biometricAvailable = remember { BiometricAuthHelper.canUseBiometric(context) }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) BackupHelper.importBackup(context, uri)
@@ -275,8 +280,23 @@ fun ConfiguracoesScreen(
                     }
                 }
                 SummarySwitchRow(
+                    title = "Resumo de vencidas",
+                    subtitle = "Contas atrasadas e total vencido.",
+                    checked = overdueSummary,
+                    onCheckedChange = { checked ->
+                        if (checked) requestNotificationsIfNeeded()
+                        overdueSummary = checked
+                        AppSettings.setOverdueSummaryEnabled(context, checked)
+                    }
+                )
+                SummaryHoursField(
+                    value = overdueSummaryHours,
+                    enabled = overdueSummary,
+                    onValueChange = { overdueSummaryHours = it }
+                )
+                SummarySwitchRow(
                     title = "Resumo de hoje",
-                    subtitle = "Notificacao as 8h com contas que vencem no dia.",
+                    subtitle = "Contas que vencem no dia.",
                     checked = todaySummary,
                     onCheckedChange = { checked ->
                         if (checked) requestNotificationsIfNeeded()
@@ -284,9 +304,14 @@ fun ConfiguracoesScreen(
                         AppSettings.setTodaySummaryEnabled(context, checked)
                     }
                 )
+                SummaryHoursField(
+                    value = todaySummaryHours,
+                    enabled = todaySummary,
+                    onValueChange = { todaySummaryHours = it }
+                )
                 SummarySwitchRow(
                     title = "Resumo de amanha",
-                    subtitle = "Notificacao as 18h com contas do dia seguinte.",
+                    subtitle = "Contas do dia seguinte.",
                     checked = tomorrowSummary,
                     onCheckedChange = { checked ->
                         if (checked) requestNotificationsIfNeeded()
@@ -294,6 +319,47 @@ fun ConfiguracoesScreen(
                         AppSettings.setTomorrowSummaryEnabled(context, checked)
                     }
                 )
+                SummaryHoursField(
+                    value = tomorrowSummaryHours,
+                    enabled = tomorrowSummary,
+                    onValueChange = { tomorrowSummaryHours = it }
+                )
+                TextButton(
+                    onClick = {
+                        AppSettings.setOverdueSummaryHours(context, overdueSummaryHours)
+                        AppSettings.setTodaySummaryHours(context, todaySummaryHours)
+                        AppSettings.setTomorrowSummaryHours(context, tomorrowSummaryHours)
+                        NotificationScheduler.resetSummaryShownState(context)
+                        overdueSummaryHours = AppSettings.overdueSummaryHoursText(context)
+                        todaySummaryHours = AppSettings.todaySummaryHoursText(context)
+                        tomorrowSummaryHours = AppSettings.tomorrowSummaryHoursText(context)
+                        notificationTestMessage = "Horarios salvos."
+                    }
+                ) {
+                    Text("Salvar horarios")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            requestNotificationsIfNeeded()
+                            val shown = NotificationScheduler.showTestNotification(context)
+                            notificationTestMessage = if (shown) {
+                                "Notificacao de teste enviada."
+                            } else {
+                                "Permita notificacoes para testar."
+                            }
+                        }
+                    ) {
+                        Text("Testar notificacao agora")
+                    }
+                }
+                notificationTestMessage?.let {
+                    Text(
+                        text = it,
+                        color = Color(0xFF6B7280),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
     }
@@ -438,6 +504,23 @@ private fun SetPasswordDialog(onDismiss: () -> Unit, onSave: (String, String, St
                 Text("Cancelar")
             }
         }
+    )
+}
+
+@Composable
+private fun SummaryHoursField(
+    value: String,
+    enabled: Boolean,
+    onValueChange: (String) -> Unit
+) {
+    androidx.compose.material3.OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
+        label = { Text("Horarios") },
+        supportingText = { Text("Use hora ou hora:minuto. Ex: 8:00, 12:30, 18") },
+        singleLine = true
     )
 }
 
