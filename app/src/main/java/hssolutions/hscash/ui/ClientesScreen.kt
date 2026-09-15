@@ -41,13 +41,14 @@ import androidx.compose.ui.unit.dp
 fun ClientesScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     var clientes by remember { mutableStateOf(ClienteStorage.listarClientes(context)) }
-    var contas by remember { mutableStateOf(ContaStorage.listarContas(context)) }
+    val contaList = rememberContaListState()
+    val contas = contaList.contas
     var editingCliente by remember { mutableStateOf<ClienteSalvo?>(null) }
     var showDialog by remember { mutableStateOf(false) }
 
     fun reload() {
         clientes = ClienteStorage.listarClientes(context)
-        contas = ContaStorage.listarContas(context)
+        contaList.refresh()
     }
 
     LazyColumn(
@@ -176,20 +177,23 @@ private fun ClienteDialog(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Nome") },
-                    singleLine = true
+                    singleLine = true,
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 OutlinedTextField(
                     value = whatsapp,
                     onValueChange = { whatsapp = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("WhatsApp com DDD") },
-                    singleLine = true
+                    singleLine = true,
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 OutlinedTextField(
                     value = observacao,
                     onValueChange = { observacao = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Observacao") }
+                    label = { Text("Observacao") },
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 error?.let { Text(it, color = Color(0xFFD32F2F)) }
             }

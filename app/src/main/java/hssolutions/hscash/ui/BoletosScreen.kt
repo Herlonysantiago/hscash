@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -56,6 +57,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +70,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -78,8 +81,10 @@ fun BoletosScreen(
     onBoletoFound: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
+    val helpTargets = rememberScreenHelpTargets()
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
@@ -188,6 +193,14 @@ fun BoletosScreen(
                 )
             }
 
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.8f)
+                    .fillMaxHeight(0.44f)
+                    .align(Alignment.Center)
+                    .screenHelpTarget(helpTargets, "scanner_frame")
+            )
+
             ScannerIconButton(
                 onClick = onBack,
                 modifier = Modifier
@@ -195,6 +208,18 @@ fun BoletosScreen(
                     .padding(12.dp),
                 icon = Icons.Default.ArrowBack,
                 description = "Voltar"
+            )
+
+            ScreenHelp(
+                screenKey = "scanner_boletos",
+                darkButton = true,
+                modifier = Modifier.align(Alignment.TopCenter).padding(12.dp),
+                steps = listOf(
+                    ScreenHelpStep("Enquadre o código", "Posicione o código de barras dentro da moldura. A leitura acontece automaticamente.", HelpFocus.CENTER, "scanner_frame"),
+                    ScreenHelpStep("Use o flash", "Ligue a iluminação quando o código estiver escuro ou com pouco contraste.", HelpFocus.TOP, "scanner_flash"),
+                    ScreenHelpStep("Digitação manual", "Se a câmera não conseguir ler, toque no lápis e informe a linha digitável.", HelpFocus.BOTTOM, "scanner_manual")
+                ),
+                targets = helpTargets
             )
 
             ScannerIconButton(
@@ -205,7 +230,8 @@ fun BoletosScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(12.dp),
+                    .padding(12.dp)
+                    .screenHelpTarget(helpTargets, "scanner_flash"),
                 icon = if (flashLigado) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff,
                 description = if (flashLigado) "Desligar flash" else "Ligar flash",
                 enabled = camera?.cameraInfo?.hasFlashUnit() == true
@@ -215,7 +241,8 @@ fun BoletosScreen(
                 onClick = { mostrarDigitacao = true },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(12.dp),
+                    .padding(12.dp)
+                    .screenHelpTarget(helpTargets, "scanner_manual"),
                 icon = Icons.Default.Edit,
                 description = "Digitar codigo"
             )
@@ -243,7 +270,8 @@ fun BoletosScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Codigo de barras ou linha digitavel") },
-                        singleLine = false
+                        singleLine = false,
+                        colors = hsCashOutlinedTextFieldColors()
                     )
                     erroManual?.let {
                         Text(
@@ -313,6 +341,7 @@ fun BoletoDetalheScreen(
     onSaved: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val boletoInfo = remember(codigo) { parseBoleto(codigo) }
     var fornecedor by remember { mutableStateOf("") }
     var categoria by remember { mutableStateOf("") }
@@ -425,7 +454,8 @@ fun BoletoDetalheScreen(
                     onValueChange = { fornecedor = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Fornecedor (opcional)") },
-                    singleLine = true
+                    singleLine = true,
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 OutlinedTextField(
                     value = categoria,
@@ -433,7 +463,8 @@ fun BoletoDetalheScreen(
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Categoria") },
                     placeholder = { Text("Ex: Luz, Agua, Internet") },
-                    singleLine = true
+                    singleLine = true,
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -489,7 +520,8 @@ fun BoletoDetalheScreen(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Vencimento (dd/mm/aaaa)") },
                         singleLine = true,
-                        isError = erroVencimento != null
+                        isError = erroVencimento != null,
+                        colors = hsCashOutlinedTextFieldColors()
                     )
                     erroVencimento?.let {
                         Text(
@@ -530,21 +562,23 @@ fun BoletoDetalheScreen(
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
 
-                val salvou = ContaStorage.salvarBoleto(
-                    context = context,
-                    boleto = boletoParaSalvar,
-                    fornecedor = fornecedor,
-                    categoria = categoria.ifBlank { "Outros" },
-                    recorrente = recorrente,
-                    recorrencia = recorrencia
-                )
-                val mensagem = if (salvou) {
-                    "Conta salva com sucesso"
-                } else {
-                    "Essa conta ja estava salva"
+                scope.launch {
+                    val salvou = ContaStorage.salvarBoletoAsync(
+                        context = context,
+                        boleto = boletoParaSalvar,
+                        fornecedor = fornecedor,
+                        categoria = categoria.ifBlank { "Outros" },
+                        recorrente = recorrente,
+                        recorrencia = recorrencia
+                    )
+                    val mensagem = if (salvou) {
+                        "Conta salva com sucesso"
+                    } else {
+                        "Essa conta ja estava salva"
+                    }
+                    Toast.makeText(context, mensagem, Toast.LENGTH_SHORT).show()
+                    onSaved()
                 }
-                Toast.makeText(context, mensagem, Toast.LENGTH_SHORT).show()
-                onSaved()
             },
             modifier = Modifier.fillMaxWidth()
         ) {

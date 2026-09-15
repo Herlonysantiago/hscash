@@ -1,7 +1,9 @@
 package hssolutions.hscash.ui
 
+import android.annotation.SuppressLint
 import android.Manifest
 import android.app.AlarmManager
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -20,6 +22,10 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 object NotificationScheduler {
     private const val CHANNEL_ID = "contas_vencimento"
@@ -295,8 +301,7 @@ object NotificationScheduler {
             .setStyle(NotificationCompat.BigTextStyle().bigText(details))
             .build()
 
-        NotificationManagerCompat.from(context).notify(OVERDUE_SUMMARY_NOTIFICATION_ID, notification)
-        return true
+        return postNotification(context, OVERDUE_SUMMARY_NOTIFICATION_ID, notification)
     }
 
     fun showTestNotification(context: Context): Boolean {
@@ -309,8 +314,7 @@ object NotificationScheduler {
             message = "As notificacoes estao funcionando neste aparelho."
         ).build()
 
-        NotificationManagerCompat.from(context).notify("hs-cash-test".hashCode(), notification)
-        return true
+        return postNotification(context, "hs-cash-test".hashCode(), notification)
     }
 
     fun resetSummaryShownState(context: Context) {
@@ -463,8 +467,7 @@ object NotificationScheduler {
             .setStyle(NotificationCompat.BigTextStyle().bigText(details))
             .build()
 
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
-        return true
+        return postNotification(context, notificationId, notification)
     }
 
     private fun isDateOffset(value: String, dayOffset: Int): Boolean {
@@ -542,6 +545,18 @@ object NotificationScheduler {
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
     }
 
+    @SuppressLint("MissingPermission")
+    internal fun postNotification(context: Context, notificationId: Int, notification: Notification): Boolean {
+        if (!canPostNotifications(context)) return false
+
+        return try {
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
+            true
+        } catch (_: SecurityException) {
+            false
+        }
+    }
+
     internal fun isTodaySummaryAction(action: String?): Boolean = action == ACTION_TODAY_SUMMARY
 
     internal fun isTomorrowSummaryAction(action: String?): Boolean = action == ACTION_TOMORROW_SUMMARY
@@ -561,36 +576,37 @@ object NotificationScheduler {
 
 class NotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (!NotificationScheduler.canPostNotifications(context)) {
-            return
+        val pendingResult = goAsync()
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                if (!NotificationScheduler.canPostNotifications(context)) return@launch
+
+                when {
+                    NotificationScheduler.isTodaySummaryAction(intent.action) -> {
+                        NotificationScheduler.showTodaySummaryOnceIfDue(context)
+                        NotificationScheduler.scheduleDailyTodaySummary(context)
+                    }
+                    NotificationScheduler.isTomorrowSummaryAction(intent.action) -> {
+                        NotificationScheduler.showTomorrowSummaryOnceIfDue(context)
+                        NotificationScheduler.scheduleDailyTomorrowSummary(context)
+                    }
+                    NotificationScheduler.isOverdueSummaryAction(intent.action) -> {
+                        NotificationScheduler.showOverdueSummaryOnceIfDue(context)
+                        NotificationScheduler.scheduleDailyOverdueSummary(context)
+                    }
+                    else -> {
+                        NotificationScheduler.ensureChannel(context)
+                        val title = intent.getStringExtra("title") ?: "Conta perto do vencimento"
+                        val message = intent.getStringExtra("message") ?: "Confira suas contas no HS Cash."
+                        val contaId = intent.getStringExtra("contaId")
+                        val notification = NotificationScheduler.buildNotification(context, title, message, contaId)
+                            .build()
+                        NotificationScheduler.postNotification(context, message.hashCode(), notification)
+                    }
+                }
+            } finally {
+                pendingResult.finish()
+            }
         }
-
-        if (NotificationScheduler.isTodaySummaryAction(intent.action)) {
-            NotificationScheduler.showTodaySummaryOnceIfDue(context)
-            NotificationScheduler.scheduleDailyTodaySummary(context)
-            return
-        }
-
-        if (NotificationScheduler.isTomorrowSummaryAction(intent.action)) {
-            NotificationScheduler.showTomorrowSummaryOnceIfDue(context)
-            NotificationScheduler.scheduleDailyTomorrowSummary(context)
-            return
-        }
-
-        if (NotificationScheduler.isOverdueSummaryAction(intent.action)) {
-            NotificationScheduler.showOverdueSummaryOnceIfDue(context)
-            NotificationScheduler.scheduleDailyOverdueSummary(context)
-            return
-        }
-
-        NotificationScheduler.ensureChannel(context)
-
-        val title = intent.getStringExtra("title") ?: "Conta perto do vencimento"
-        val message = intent.getStringExtra("message") ?: "Confira suas contas no HS Cash."
-        val contaId = intent.getStringExtra("contaId")
-        val notification = NotificationScheduler.buildNotification(context, title, message, contaId)
-            .build()
-
-        NotificationManagerCompat.from(context).notify(message.hashCode(), notification)
     }
 }

@@ -2,8 +2,15 @@ package hssolutions.hscash.ui
 
 import android.content.Context
 import android.net.Uri
+import android.util.Base64
 import java.security.MessageDigest
-import java.util.UUID
+import java.security.SecureRandom
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 object AppSettings {
     private const val PREFS_NAME = "hs_cash_settings"
@@ -24,6 +31,10 @@ object AppSettings {
     private const val KEY_SECURITY_QUESTION = "security_question"
     private const val KEY_SECURITY_ANSWER_HASH = "security_answer_hash"
     private const val KEY_SECURITY_ANSWER_SALT = "security_answer_salt"
+    private const val PBKDF2_PREFIX = "pbkdf2-sha256"
+    private const val PBKDF2_ITERATIONS = 210_000
+    private const val PBKDF2_KEY_LENGTH_BITS = 256
+    private val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun isOnboardingDone(context: Context): Boolean {
         return prefs(context).getBoolean(KEY_ONBOARDING_DONE, false)
@@ -31,6 +42,14 @@ object AppSettings {
 
     fun setOnboardingDone(context: Context, done: Boolean) {
         prefs(context).edit().putBoolean(KEY_ONBOARDING_DONE, done).apply()
+    }
+
+    fun isScreenHelpSeen(context: Context, screenKey: String): Boolean {
+        return prefs(context).getBoolean("screen_help_seen_$screenKey", false)
+    }
+
+    fun setScreenHelpSeen(context: Context, screenKey: String) {
+        prefs(context).edit().putBoolean("screen_help_seen_$screenKey", true).apply()
     }
 
     fun reminderDays(context: Context): Set<Int> {
@@ -45,7 +64,10 @@ object AppSettings {
         prefs(context).edit()
             .putString(KEY_REMINDER_DAYS, days.sortedDescending().joinToString(","))
             .apply()
-        ContaStorage.listarContas(context).forEach { NotificationScheduler.scheduleConta(context, it) }
+        workerScope.launch {
+            ContaStorage.listarContasAsync(context.applicationContext)
+                .forEach { NotificationScheduler.scheduleConta(context.applicationContext, it) }
+        }
     }
 
     fun isTodaySummaryEnabled(context: Context): Boolean {
@@ -54,9 +76,9 @@ object AppSettings {
 
     fun setTodaySummaryEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_TODAY_SUMMARY_ENABLED, enabled).apply()
-        NotificationScheduler.scheduleDailySummaries(context)
-        if (enabled) {
-            NotificationScheduler.showTodaySummaryOnceIfDue(context)
+        workerScope.launch {
+            NotificationScheduler.scheduleDailySummaries(context.applicationContext)
+            if (enabled) NotificationScheduler.showTodaySummaryOnceIfDue(context.applicationContext)
         }
     }
 
@@ -66,9 +88,9 @@ object AppSettings {
 
     fun setTomorrowSummaryEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_TOMORROW_SUMMARY_ENABLED, enabled).apply()
-        NotificationScheduler.scheduleDailySummaries(context)
-        if (enabled) {
-            NotificationScheduler.showTomorrowSummaryOnceIfDue(context)
+        workerScope.launch {
+            NotificationScheduler.scheduleDailySummaries(context.applicationContext)
+            if (enabled) NotificationScheduler.showTomorrowSummaryOnceIfDue(context.applicationContext)
         }
     }
 
@@ -78,9 +100,9 @@ object AppSettings {
 
     fun setOverdueSummaryEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_OVERDUE_SUMMARY_ENABLED, enabled).apply()
-        NotificationScheduler.scheduleDailySummaries(context)
-        if (enabled) {
-            NotificationScheduler.showOverdueSummaryOnceIfDue(context)
+        workerScope.launch {
+            NotificationScheduler.scheduleDailySummaries(context.applicationContext)
+            if (enabled) NotificationScheduler.showOverdueSummaryOnceIfDue(context.applicationContext)
         }
     }
 
@@ -123,7 +145,7 @@ object AppSettings {
     private fun setSummaryHours(context: Context, key: String, value: String, defaultValue: String) {
         val sanitized = parseTimes(value).joinToString(", ") { formatTime(it) }
         prefs(context).edit().putString(key, sanitized.ifBlank { defaultValue }).apply()
-        NotificationScheduler.scheduleDailySummaries(context)
+        workerScope.launch { NotificationScheduler.scheduleDailySummaries(context.applicationContext) }
     }
 
     private fun summaryTimes(context: Context, key: String, defaultValue: String): List<Int> {
@@ -200,10 +222,9 @@ object AppSettings {
     }
 
     fun setAppLockPassword(context: Context, password: String) {
-        val salt = UUID.randomUUID().toString()
         prefs(context).edit()
-            .putString(KEY_APP_LOCK_PASSWORD_SALT, salt)
-            .putString(KEY_APP_LOCK_PASSWORD_HASH, hashPassword(salt, password))
+            .remove(KEY_APP_LOCK_PASSWORD_SALT)
+            .putString(KEY_APP_LOCK_PASSWORD_HASH, hashSecret(password))
             .putBoolean(KEY_APP_LOCK_ENABLED, true)
             .apply()
     }
@@ -214,14 +235,12 @@ object AppSettings {
         securityQuestion: String,
         securityAnswer: String
     ) {
-        val passwordSalt = UUID.randomUUID().toString()
-        val answerSalt = UUID.randomUUID().toString()
         prefs(context).edit()
-            .putString(KEY_APP_LOCK_PASSWORD_SALT, passwordSalt)
-            .putString(KEY_APP_LOCK_PASSWORD_HASH, hashSecret(passwordSalt, password))
+            .remove(KEY_APP_LOCK_PASSWORD_SALT)
+            .putString(KEY_APP_LOCK_PASSWORD_HASH, hashSecret(password))
             .putString(KEY_SECURITY_QUESTION, securityQuestion.trim())
-            .putString(KEY_SECURITY_ANSWER_SALT, answerSalt)
-            .putString(KEY_SECURITY_ANSWER_HASH, hashSecret(answerSalt, normalizeAnswer(securityAnswer)))
+            .remove(KEY_SECURITY_ANSWER_SALT)
+            .putString(KEY_SECURITY_ANSWER_HASH, hashSecret(normalizeAnswer(securityAnswer)))
             .putBoolean(KEY_APP_LOCK_ENABLED, true)
             .apply()
     }
@@ -229,8 +248,15 @@ object AppSettings {
     fun verifyAppLockPassword(context: Context, password: String): Boolean {
         val salt = prefs(context).getString(KEY_APP_LOCK_PASSWORD_SALT, "").orEmpty()
         val expectedHash = prefs(context).getString(KEY_APP_LOCK_PASSWORD_HASH, "").orEmpty()
-        if (salt.isBlank() || expectedHash.isBlank()) return false
-        return hashSecret(salt, password) == expectedHash
+        if (expectedHash.isBlank()) return false
+        val valid = verifySecret(expectedHash, salt, password)
+        if (valid && !isPbkdf2Hash(expectedHash)) {
+            prefs(context).edit()
+                .remove(KEY_APP_LOCK_PASSWORD_SALT)
+                .putString(KEY_APP_LOCK_PASSWORD_HASH, hashSecret(password))
+                .apply()
+        }
+        return valid
     }
 
     fun clearAppLock(context: Context) {
@@ -267,19 +293,63 @@ object AppSettings {
     fun verifySecurityAnswer(context: Context, answer: String): Boolean {
         val salt = prefs(context).getString(KEY_SECURITY_ANSWER_SALT, "").orEmpty()
         val expectedHash = prefs(context).getString(KEY_SECURITY_ANSWER_HASH, "").orEmpty()
-        if (salt.isBlank() || expectedHash.isBlank()) return false
-        return hashSecret(salt, normalizeAnswer(answer)) == expectedHash
+        if (expectedHash.isBlank()) return false
+        val normalizedAnswer = normalizeAnswer(answer)
+        val valid = verifySecret(expectedHash, salt, normalizedAnswer)
+        if (valid && !isPbkdf2Hash(expectedHash)) {
+            prefs(context).edit()
+                .remove(KEY_SECURITY_ANSWER_SALT)
+                .putString(KEY_SECURITY_ANSWER_HASH, hashSecret(normalizedAnswer))
+                .apply()
+        }
+        return valid
     }
 
     private fun normalizeAnswer(answer: String): String {
         return answer.trim().lowercase()
     }
 
-    private fun hashPassword(salt: String, password: String): String {
-        return hashSecret(salt, password)
+    private fun hashSecret(secret: String): String {
+        val salt = ByteArray(16).also(SecureRandom()::nextBytes)
+        val hash = pbkdf2(secret, salt)
+        return listOf(
+            PBKDF2_PREFIX,
+            PBKDF2_ITERATIONS.toString(),
+            Base64.encodeToString(salt, Base64.NO_WRAP),
+            Base64.encodeToString(hash, Base64.NO_WRAP)
+        ).joinToString("$")
     }
 
-    private fun hashSecret(salt: String, secret: String): String {
+    private fun verifySecret(storedHash: String, legacySalt: String, secret: String): Boolean {
+        if (!isPbkdf2Hash(storedHash)) {
+            return legacySalt.isNotBlank() && legacyHash(legacySalt, secret) == storedHash
+        }
+        val parts = storedHash.split("$")
+        if (parts.size != 4) return false
+        return try {
+            val iterations = parts[1].toInt()
+            val salt = Base64.decode(parts[2], Base64.NO_WRAP)
+            val expected = Base64.decode(parts[3], Base64.NO_WRAP)
+            MessageDigest.isEqual(pbkdf2(secret, salt, iterations, expected.size * 8), expected)
+        } catch (_: IllegalArgumentException) {
+            false
+        }
+    }
+
+    private fun isPbkdf2Hash(value: String): Boolean = value.startsWith("$PBKDF2_PREFIX$")
+
+    private fun pbkdf2(
+        secret: String,
+        salt: ByteArray,
+        iterations: Int = PBKDF2_ITERATIONS,
+        keyLengthBits: Int = PBKDF2_KEY_LENGTH_BITS
+    ): ByteArray {
+        return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            .generateSecret(PBEKeySpec(secret.toCharArray(), salt, iterations, keyLengthBits))
+            .encoded
+    }
+
+    private fun legacyHash(salt: String, secret: String): String {
         val bytes = MessageDigest.getInstance("SHA-256")
             .digest("$salt:$secret".toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }

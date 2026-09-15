@@ -26,21 +26,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 @Composable
 fun LixeiraScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
-    var contas by remember { mutableStateOf(ContaStorage.listarLixeira(context)) }
+    val contaList = rememberContaListState(includeDeleted = true)
+    val scope = rememberCoroutineScope()
+    val contas = contaList.contas
     var excluirDefinitivo by remember { mutableStateOf<ContaSalva?>(null) }
+    var processando by remember { mutableStateOf(false) }
 
     fun reload() {
-        contas = ContaStorage.listarLixeira(context)
+        contaList.refresh()
     }
 
     LazyColumn(
@@ -85,9 +90,17 @@ fun LixeiraScreen(onBack: () -> Unit = {}) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(
                                 onClick = {
-                                    ContaStorage.restaurarConta(context, conta.id)
-                                    reload()
-                                }
+                                    scope.launch {
+                                        processando = true
+                                        try {
+                                            ContaStorage.restaurarContaAsync(context, conta.id)
+                                            reload()
+                                        } finally {
+                                            processando = false
+                                        }
+                                    }
+                                },
+                                enabled = !processando
                             ) { Text("Restaurar") }
                             TextButton(onClick = { excluirDefinitivo = conta }) { Text("Excluir definitivo") }
                         }
@@ -105,10 +118,18 @@ fun LixeiraScreen(onBack: () -> Unit = {}) {
             confirmButton = {
                 Button(
                     onClick = {
-                        ContaStorage.removerDefinitivamente(context, conta.id)
-                        excluirDefinitivo = null
-                        reload()
-                    }
+                        scope.launch {
+                            processando = true
+                            try {
+                                ContaStorage.removerDefinitivamenteAsync(context, conta.id)
+                                excluirDefinitivo = null
+                                reload()
+                            } finally {
+                                processando = false
+                            }
+                        }
+                    },
+                    enabled = !processando
                 ) { Text("Excluir") }
             },
             dismissButton = {

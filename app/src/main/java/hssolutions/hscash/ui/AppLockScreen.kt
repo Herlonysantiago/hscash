@@ -125,7 +125,8 @@ fun AppLockScreen(
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(onDone = { unlockWithPassword() }),
-                    isError = error != null
+                    isError = error != null,
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 error?.let {
                     Text(it, color = Color(0xFFD32F2F), style = MaterialTheme.typography.bodySmall)
@@ -192,7 +193,8 @@ private fun RecoveryDialog(onDismiss: () -> Unit, onRecovered: () -> Unit) {
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Resposta de seguranca") },
-                    singleLine = true
+                    singleLine = true,
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 OutlinedTextField(
                     value = newPassword,
@@ -203,7 +205,8 @@ private fun RecoveryDialog(onDismiss: () -> Unit, onRecovered: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Nova senha") },
                     singleLine = true,
-                    visualTransformation = PasswordVisualTransformation()
+                    visualTransformation = PasswordVisualTransformation(),
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 OutlinedTextField(
                     value = confirmation,
@@ -215,7 +218,8 @@ private fun RecoveryDialog(onDismiss: () -> Unit, onRecovered: () -> Unit) {
                     label = { Text("Confirmar nova senha") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
-                    isError = error != null
+                    isError = error != null,
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 error?.let {
                     Text(it, color = Color(0xFFD32F2F), style = MaterialTheme.typography.bodySmall)

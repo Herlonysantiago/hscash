@@ -10,6 +10,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
@@ -26,9 +27,12 @@ data class ContaEntity(
     val categoria: String,
     val status: String,
     val pagoEm: Long?,
+    val formaPagamento: String?,
+    val observacaoPagamento: String?,
     val recorrente: Boolean,
     val recorrencia: String,
     val comprovantePath: String?,
+    val boletoPdfPath: String?,
     val direcao: String,
     val clienteWhatsapp: String?,
     val excluidaEm: Long?
@@ -56,17 +60,25 @@ interface ContaDao {
 
     @Query("DELETE FROM contas")
     fun limpar()
+
+    @Transaction
+    fun substituirTodas(contas: List<ContaEntity>) {
+        limpar()
+        upsertAll(contas)
+    }
 }
 
 @Database(
     entities = [ContaEntity::class],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 abstract class HsCashDatabase : RoomDatabase() {
     abstract fun contaDao(): ContaDao
 
     companion object {
+        internal const val DATABASE_NAME = "hs_cash.db"
+
         @Volatile private var instance: HsCashDatabase? = null
 
         fun get(context: Context): HsCashDatabase {
@@ -74,9 +86,9 @@ abstract class HsCashDatabase : RoomDatabase() {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     HsCashDatabase::class.java,
-                    "hs_cash.db"
+                    DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                     .also { instance = it }
             }
@@ -99,6 +111,20 @@ abstract class HsCashDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE contas ADD COLUMN excluidaEm INTEGER")
             }
         }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE contas ADD COLUMN boletoPdfPath TEXT")
+                db.execSQL("UPDATE contas SET boletoPdfPath = comprovantePath, comprovantePath = NULL WHERE categoria = 'Boletos importados' AND comprovantePath IS NOT NULL")
+            }
+        }
+
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE contas ADD COLUMN formaPagamento TEXT")
+                db.execSQL("ALTER TABLE contas ADD COLUMN observacaoPagamento TEXT")
+            }
+        }
     }
 }
 
@@ -115,9 +141,12 @@ fun ContaEntity.toContaSalva(): ContaSalva {
         categoria = categoria,
         status = status,
         pagoEm = pagoEm,
+        formaPagamento = formaPagamento,
+        observacaoPagamento = observacaoPagamento,
         recorrente = recorrente,
         recorrencia = recorrencia,
         comprovantePath = comprovantePath,
+        boletoPdfPath = boletoPdfPath,
         direcao = direcao,
         clienteWhatsapp = clienteWhatsapp,
         excluidaEm = excluidaEm
@@ -137,9 +166,12 @@ fun ContaSalva.toEntity(): ContaEntity {
         categoria = categoria,
         status = status,
         pagoEm = pagoEm,
+        formaPagamento = formaPagamento,
+        observacaoPagamento = observacaoPagamento,
         recorrente = recorrente,
         recorrencia = recorrencia,
         comprovantePath = comprovantePath,
+        boletoPdfPath = boletoPdfPath,
         direcao = direcao,
         clienteWhatsapp = clienteWhatsapp,
         excluidaEm = excluidaEm

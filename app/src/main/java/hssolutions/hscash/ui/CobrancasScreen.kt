@@ -21,21 +21,29 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 @Composable
 fun CobrancasScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
-    var contas by remember { mutableStateOf(ContaStorage.listarContas(context)) }
+    val scope = rememberCoroutineScope()
+    var contas by remember { mutableStateOf(emptyList<ContaSalva>()) }
+    fun carregarContas() {
+        scope.launch { contas = ContaStorage.listarContasAsync(context) }
+    }
+    LaunchedEffect(Unit) { carregarContas() }
     val hoje = startOfToday()
     val cobrancas = remember(contas) {
         contas
@@ -76,8 +84,10 @@ fun CobrancasScreen(onBack: () -> Unit = {}) {
                     conta = conta,
                     onCharge = { WhatsAppHelper.sendCharge(context, conta) },
                     onReceived = {
-                        ContaStorage.marcarComoPago(context, conta.id)
-                        contas = ContaStorage.listarContas(context)
+                        scope.launch {
+                            ContaStorage.marcarComoPagoAsync(context, conta.id)
+                            contas = ContaStorage.listarContasAsync(context)
+                        }
                     }
                 )
             }

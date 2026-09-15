@@ -11,6 +11,7 @@ import java.math.BigDecimal
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 object ReportPdfHelper {
@@ -39,6 +40,13 @@ object ReportPdfHelper {
             val pagas = contas.filter { it.direcao == ContaDirecao.PAGAR && it.status == ContaStatus.PAGO && isPaidInMonth(it, month) }
             val pendentes = contas.filter { it.direcao == ContaDirecao.PAGAR && it.status != ContaStatus.PAGO && isDueInMonth(it, month) }
             val receber = contas.filter { it.direcao == ContaDirecao.RECEBER && it.status != ContaStatus.PAGO && isDueInMonth(it, month) }
+            val recebidas = contas.filter { it.direcao == ContaDirecao.RECEBER && it.status == ContaStatus.PAGO && isPaidInMonth(it, month) }
+            val previousMonth = (month.clone() as Calendar).apply { add(Calendar.MONTH, -1) }
+            val pagasMesAnterior = contas.filter { it.direcao == ContaDirecao.PAGAR && it.status == ContaStatus.PAGO && isPaidInMonth(it, previousMonth) }
+            val pagoTotal = pagas.sumOf { parseCents(it.valor) }
+            val pendenteTotal = pendentes.sumOf { parseCents(it.valor) }
+            val receberTotal = receber.sumOf { parseCents(it.valor) }
+            val anteriorTotal = pagasMesAnterior.sumOf { parseCents(it.valor) }
 
             val document = PdfDocument()
             val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
@@ -54,12 +62,23 @@ object ReportPdfHelper {
             canvas.drawText(label, 40f, y, body)
             y += 34f
 
-            y = drawSummary(canvas, y, section, body, "Total pago", pagas.sumOf { parseCents(it.valor) })
-            y = drawSummary(canvas, y, section, body, "Total pendente", pendentes.sumOf { parseCents(it.valor) })
-            y = drawSummary(canvas, y, section, body, "A receber", receber.sumOf { parseCents(it.valor) })
+            y = drawSummary(canvas, y, section, body, "Total pago", pagoTotal)
+            y = drawSummary(canvas, y, section, body, "Total pendente", pendenteTotal)
+            y = drawSummary(canvas, y, section, body, "A receber", receberTotal)
+            y = drawSummary(canvas, y, section, body, "Saldo projetado", receberTotal - pendenteTotal)
+            y = drawSummary(canvas, y, section, body, "Pago no mes anterior", anteriorTotal)
+            y = drawSummary(canvas, y, section, body, "Recebido no mes", recebidas.sumOf { parseCents(it.valor) })
             y += 18f
 
-            y = drawSection(canvas, y, section, body, "Pagas", pagas)
+            val categorias = pagas.groupBy { it.categoria.ifBlank { "Outros" } }
+                .mapValues { entry -> entry.value.sumOf { parseCents(it.valor) } }
+                .toList().sortedByDescending { it.second }
+            val formas = pagas.groupBy { it.formaPagamento?.takeIf(String::isNotBlank) ?: "Nao informado" }
+                .mapValues { entry -> entry.value.sumOf { parseCents(it.valor) } }
+                .toList().sortedByDescending { it.second }
+            y = drawBreakdown(canvas, y, section, body, "Pagamentos por categoria", categorias)
+            y = drawBreakdown(canvas, y + 8f, section, body, "Formas de pagamento", formas)
+            y = drawSection(canvas, y + 10f, section, body, "Pagas", pagas)
             y = drawSection(canvas, y + 10f, section, body, "Pendentes", pendentes)
             drawSection(canvas, y + 10f, section, body, "A receber", receber)
 
@@ -88,13 +107,41 @@ object ReportPdfHelper {
             canvas.drawText("Nenhum registro.", 52f, y, bodyPaint)
             return y + 18f
         }
-        contas.take(12).forEach { conta ->
-            val text = "${conta.vencimento}  ${conta.fornecedor.ifBlank { conta.banco }}  ${conta.valor}"
+        contas.take(8).forEach { conta ->
+            val payment = if (conta.status == ContaStatus.PAGO) {
+                listOfNotNull(
+                    conta.pagoEm?.let { SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).format(Date(it)) },
+                    conta.formaPagamento
+                ).joinToString(" - ").takeIf { it.isNotBlank() }?.let { "  [$it]" }.orEmpty()
+            } else ""
+            val text = "${conta.vencimento}  ${conta.fornecedor.ifBlank { conta.banco }}  ${conta.valor}$payment"
             canvas.drawText(text.take(86), 52f, y, bodyPaint)
             y += 16f
         }
-        if (contas.size > 12) {
-            canvas.drawText("+${contas.size - 12} registros", 52f, y, bodyPaint)
+        if (contas.size > 8) {
+            canvas.drawText("+${contas.size - 8} registros", 52f, y, bodyPaint)
+            y += 16f
+        }
+        return y
+    }
+
+    private fun drawBreakdown(
+        canvas: android.graphics.Canvas,
+        startY: Float,
+        sectionPaint: Paint,
+        bodyPaint: Paint,
+        title: String,
+        values: List<Pair<String, Long>>
+    ): Float {
+        var y = startY
+        canvas.drawText(title, 40f, y, sectionPaint)
+        y += 20f
+        if (values.isEmpty()) {
+            canvas.drawText("Nenhum registro.", 52f, y, bodyPaint)
+            return y + 18f
+        }
+        values.take(6).forEach { (label, cents) ->
+            canvas.drawText("${label.take(42)}  ${formatMoney(cents)}", 52f, y, bodyPaint)
             y += 16f
         }
         return y

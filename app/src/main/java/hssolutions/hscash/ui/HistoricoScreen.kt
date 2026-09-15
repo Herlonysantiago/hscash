@@ -30,17 +30,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var contas by remember { mutableStateOf(ContaStorage.listarContas(context)) }
+    val contaList = rememberContaListState()
+    val contas = contaList.contas
+    val helpTargets = rememberScreenHelpTargets()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                contas = ContaStorage.listarContas(context)
+                contaList.refresh()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -54,11 +59,20 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text(
-            text = "Historico",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().screenHelpTarget(helpTargets, "history_header"),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = "Historico", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            ScreenHelp(
+                screenKey = "historico",
+                steps = listOf(
+                    ScreenHelpStep("Contas concluídas", "Aqui ficam pagamentos e recebimentos que já foram confirmados.", HelpFocus.TOP, "history_header"),
+                    ScreenHelpStep("Consulte os detalhes", "Toque em um registro para abrir seus dados, comprovantes ou retorná-lo para pendente.", HelpFocus.CENTER, "history_list")
+                ),
+                targets = helpTargets
+            )
+        }
         Text(
             text = "Pagamentos e recebimentos concluidos",
             style = MaterialTheme.typography.bodyMedium,
@@ -67,7 +81,7 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
         )
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().screenHelpTarget(helpTargets, "history_list"),
             contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -102,7 +116,18 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
                                 color = Color(0xFF111827)
                             )
                             Text(
-                                text = "${if (conta.direcao == ContaDirecao.RECEBER) "Recebido" else "Pago"} - ${conta.categoria} - data ${conta.vencimento}",
+                                text = "${if (conta.direcao == ContaDirecao.RECEBER) "Recebido" else "Pago"} - ${conta.categoria}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF6B7280)
+                            )
+                            val dataConfirmacao = conta.pagoEm?.let {
+                                SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).format(Date(it))
+                            } ?: conta.vencimento
+                            Text(
+                                text = buildString {
+                                    append("Confirmado em $dataConfirmacao")
+                                    conta.formaPagamento?.takeIf { it.isNotBlank() }?.let { append(" • $it") }
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF6B7280)
                             )

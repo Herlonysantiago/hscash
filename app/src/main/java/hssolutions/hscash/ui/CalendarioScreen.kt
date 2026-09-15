@@ -51,7 +51,8 @@ import java.util.Locale
 fun CalendarioScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var contas by remember { mutableStateOf(ContaStorage.listarContas(context)) }
+    val contaList = rememberContaListState()
+    val contas = contaList.contas
     val today = remember { startOfToday() }
     var selectedMonth by remember { mutableStateOf(startOfToday()) }
     var selectedDate by remember { mutableStateOf(defaultSelectedDateForMonth(selectedMonth, today)) }
@@ -64,7 +65,7 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) contas = ContaStorage.listarContas(context)
+            if (event == Lifecycle.Event.ON_RESUME) contaList.refresh()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

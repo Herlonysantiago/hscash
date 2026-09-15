@@ -1,7 +1,22 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
+}
+
+val hsCashLocalProperties = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.exists()) propertiesFile.inputStream().use(::load)
+}
+
+fun buildConfigString(name: String): String {
+    val value = hsCashLocalProperties.getProperty(name)
+        ?: providers.environmentVariable(name).orNull
+        ?: ""
+    return "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }
 
 android {
@@ -20,6 +35,13 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "SUPABASE_URL", buildConfigString("SUPABASE_URL"))
+        buildConfigField(
+            "String",
+            "SUPABASE_PUBLISHABLE_KEY",
+            buildConfigString("SUPABASE_PUBLISHABLE_KEY")
+        )
     }
 
     buildTypes {
@@ -32,18 +54,30 @@ android {
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
 dependencies {
 
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
+    implementation(platform("io.github.jan-tennert.supabase:bom:3.5.0"))
+    implementation("io.github.jan-tennert.supabase:auth-kt")
+    implementation("io.github.jan-tennert.supabase:postgrest-kt")
+    implementation("io.github.jan-tennert.supabase:realtime-kt")
+    implementation("io.github.jan-tennert.supabase:storage-kt")
+    implementation("io.ktor:ktor-client-android:3.0.3")
+
     // Biblioteca de leitura de códigos de barras do Google
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
 // CameraX (Para abrir a câmera dentro do app)
     val camerax_version = "1.3.4"
@@ -65,6 +99,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

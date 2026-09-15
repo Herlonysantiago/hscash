@@ -5,14 +5,23 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import java.io.File
 import java.util.Locale
 
 object ReceiptHelper {
     fun saveReceipt(context: Context, contaId: String, uri: Uri): String? {
+        return saveFile(context, contaId, uri, "receipts")
+    }
+
+    fun saveBoletoPdf(context: Context, contaId: String, uri: Uri): String? {
+        return saveFile(context, contaId, uri, "boletos")
+    }
+
+    private fun saveFile(context: Context, contaId: String, uri: Uri, folder: String): String? {
         return try {
-            val dir = File(context.filesDir, "receipts").apply { mkdirs() }
+            val dir = File(context.filesDir, folder).apply { mkdirs() }
             val mimeType = context.contentResolver.getType(uri)
             val extension = receiptExtension(context, uri, mimeType)
             val safeContaId = contaId.filter { it.isLetterOrDigit() || it == '-' }.ifBlank { "conta" }
@@ -26,18 +35,30 @@ object ReceiptHelper {
         }
     }
 
+    fun deleteStoredFile(path: String?): Boolean {
+        if (path.isNullOrBlank()) return true
+        return runCatching {
+            val file = File(path)
+            !file.exists() || file.delete()
+        }.getOrDefault(false)
+    }
+
     fun openReceipt(context: Context, path: String) {
-        val file = File(path)
-        if (!file.exists()) return
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        val mimeType = MimeTypeMap.getSingleton()
-            .getMimeTypeFromExtension(file.extension.lowercase(Locale.US))
-            ?: "*/*"
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeType)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        runCatching {
+            val file = File(path)
+            require(file.exists()) { "Arquivo nao encontrado" }
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val mimeType = MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(file.extension.lowercase(Locale.US))
+                ?: "*/*"
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Abrir arquivo"))
+        }.onFailure {
+            Toast.makeText(context, "Nao foi possivel abrir o arquivo.", Toast.LENGTH_SHORT).show()
         }
-        context.startActivity(Intent.createChooser(intent, "Abrir comprovante"))
     }
 
     private fun receiptExtension(context: Context, uri: Uri, mimeType: String?): String {

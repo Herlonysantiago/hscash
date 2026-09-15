@@ -1,5 +1,8 @@
 package hssolutions.hscash.ui
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,9 +23,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -33,9 +40,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 private enum class ContaFiltro(val label: String) {
@@ -57,6 +67,8 @@ private enum class ContaFiltro(val label: String) {
     PAGAS("Pagas")
 }
 
+private enum class AcaoEmLote { MARCAR_PAGAS, MOVER_LIXEIRA }
+
 @Composable
 fun ContasScreen(
     onContaClick: (String) -> Unit = {},
@@ -64,15 +76,43 @@ fun ContasScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+    val helpTargets = rememberScreenHelpTargets()
     var busca by remember { mutableStateOf("") }
     var filtro by remember { mutableStateOf(ContaFiltro.TODAS) }
+    var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var direcao by remember { mutableStateOf(ContaDirecao.PAGAR) }
-    var contas by remember { mutableStateOf(ContaStorage.listarContas(context)) }
+    var contas by remember { mutableStateOf(emptyList<ContaSalva>()) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(emptySet<String>()) }
+    var acaoEmLotePendente by remember { mutableStateOf<AcaoEmLote?>(null) }
+    var importandoPdf by remember { mutableStateOf(false) }
+
+    fun carregarContas() {
+        scope.launch { contas = ContaStorage.listarContasAsync(context) }
+    }
+
+    val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) scope.launch {
+            importandoPdf = true
+            val result = PdfBoletoImporter.import(context, uris)
+            importandoPdf = false
+            carregarContas()
+            val details = buildList {
+                add("${result.imported} boleto(s) importado(s)")
+                if (result.duplicates > 0) add("${result.duplicates} repetido(s)")
+                if (result.invalid.isNotEmpty()) add("${result.invalid.size} PDF(s) sem codigo valido")
+            }.joinToString(" • ")
+            Toast.makeText(context, details, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    LaunchedEffect(Unit) { carregarContas() }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                contas = ContaStorage.listarContas(context)
+                carregarContas()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -80,9 +120,11 @@ fun ContasScreen(
     }
 
     val contasDaDirecao = contas.filter { it.direcao == direcao }
+    val categorias = contasDaDirecao.map { it.categoria.ifBlank { "Outros" } }.distinct().sorted()
     val contasFiltradas = contasDaDirecao
         .filter { it.matchesSearch(busca) }
         .filter { it.matchesFilter(filtro) }
+        .filter { categoriaSelecionada == null || it.categoria.ifBlank { "Outros" } == categoriaSelecionada }
         .sortedWith(compareBy<ContaSalva> { parseContaDate(it.vencimento)?.timeInMillis ?: Long.MAX_VALUE }.thenByDescending { it.criadaEm })
     val isReceber = direcao == ContaDirecao.RECEBER
 
@@ -93,7 +135,9 @@ fun ContasScreen(
             .padding(16.dp)
     ) {
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .screenHelpTarget(helpTargets, "screen_actions"),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF102A43)),
             shape = RoundedCornerShape(8.dp)
         ) {
@@ -118,6 +162,13 @@ fun ContasScreen(
                     )
                 }
                 Row {
+                    IconButton(onClick = { pdfLauncher.launch(arrayOf("application/pdf")) }, enabled = !importandoPdf) {
+                        Icon(
+                            Icons.Default.PictureAsPdf,
+                            contentDescription = "Importar boletos em PDF",
+                            tint = Color.White
+                        )
+                    }
                     IconButton(onClick = { onAddConta(direcao) }) {
                         Icon(
                             Icons.Default.Add,
@@ -132,6 +183,17 @@ fun ContasScreen(
                             tint = Color.White
                         )
                     }
+                    Text(
+                        text = if (selectionMode) "Cancelar" else "Selecionar",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clickable {
+                                selectionMode = !selectionMode
+                                selectedIds = emptySet()
+                            }
+                            .padding(8.dp)
+                    )
                 }
             }
         }
@@ -142,6 +204,9 @@ fun ContasScreen(
                 .padding(top = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (importandoPdf) {
+                Text("Lendo PDFs...", color = Color(0xFF1565C0), fontWeight = FontWeight.Bold)
+            }
             listOf(
                 ContaDirecao.PAGAR to "A pagar",
                 ContaDirecao.RECEBER to "A receber"
@@ -151,6 +216,8 @@ fun ContasScreen(
                     onClick = {
                         direcao = value
                         filtro = ContaFiltro.TODAS
+                        categoriaSelecionada = null
+                        selectedIds = emptySet()
                     },
                     label = { Text(label, fontWeight = if (direcao == value) FontWeight.Bold else FontWeight.Normal) },
                     colors = FilterChipDefaults.filterChipColors(
@@ -161,6 +228,16 @@ fun ContasScreen(
                     )
                 )
             }
+            Spacer(modifier = Modifier.weight(1f))
+            ScreenHelp(
+                screenKey = "contas",
+                steps = listOf(
+                    ScreenHelpStep("Ações da tela", "Use PDF para importar vários boletos, + para cadastrar e a seta de download para exportar. Selecionar ativa ações em lote.", HelpFocus.TOP, "screen_actions"),
+                    ScreenHelpStep("Busca e filtros", "Pesquise por fornecedor, banco, valor ou categoria e combine com os filtros de período e situação.", HelpFocus.CENTER, "search_field"),
+                    ScreenHelpStep("Lista de contas", "Toque em uma conta para editar, copiar o código, abrir o boleto, confirmar pagamento ou anexar comprovante.", HelpFocus.BOTTOM, "accounts_list")
+                ),
+                targets = helpTargets
+            )
         }
 
         OutlinedTextField(
@@ -168,6 +245,7 @@ fun ContasScreen(
             onValueChange = { busca = it },
             modifier = Modifier
                 .fillMaxWidth()
+                .screenHelpTarget(helpTargets, "search_field")
                 .padding(top = 16.dp),
             label = { Text("Buscar conta, banco ou categoria...") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
@@ -216,8 +294,77 @@ fun ContasScreen(
             }
         }
 
+        if (categorias.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    FilterChip(
+                        selected = categoriaSelecionada == null,
+                        onClick = { categoriaSelecionada = null },
+                        label = { Text("Categorias") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color.White, labelColor = Color(0xFF111827),
+                            selectedContainerColor = Color(0xFF0B6B2B), selectedLabelColor = Color.White
+                        )
+                    )
+                }
+                items(categorias) { categoria ->
+                    FilterChip(
+                        selected = categoriaSelecionada == categoria,
+                        onClick = { categoriaSelecionada = categoria },
+                        label = { Text(categoria) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color.White, labelColor = Color(0xFF111827),
+                            selectedContainerColor = Color(0xFF0B6B2B), selectedLabelColor = Color.White
+                        )
+                    )
+                }
+            }
+        }
+
+        if (selectionMode && selectedIds.isNotEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF102A43)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("${selectedIds.size} selecionada(s)", color = Color.White, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Marcar ${if (isReceber) "recebidas" else "pagas"}",
+                            color = Color.White,
+                            modifier = Modifier.clickable {
+                                acaoEmLotePendente = AcaoEmLote.MARCAR_PAGAS
+                            }.padding(vertical = 10.dp)
+                        )
+                        Text(
+                            "Exportar",
+                            color = Color.White,
+                            modifier = Modifier.clickable {
+                                ExportHelper.shareCsv(context, contas.filter { it.id in selectedIds })
+                            }.padding(vertical = 10.dp)
+                        )
+                        Text(
+                            "Lixeira",
+                            color = Color(0xFFFFCDD2),
+                            modifier = Modifier.clickable {
+                                acaoEmLotePendente = AcaoEmLote.MOVER_LIXEIRA
+                            }.padding(vertical = 10.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .screenHelpTarget(helpTargets, "accounts_list"),
             contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -241,15 +388,58 @@ fun ContasScreen(
             items(contasFiltradas, key = { it.id }) { conta ->
                 ContaCard(
                     conta = conta,
-                    onClick = { onContaClick(conta.id) }
+                    selectionMode = selectionMode,
+                    selected = conta.id in selectedIds,
+                    onSelectionChange = { checked ->
+                        selectedIds = if (checked) selectedIds + conta.id else selectedIds - conta.id
+                    },
+                    onClick = {
+                        if (selectionMode) {
+                            selectedIds = if (conta.id in selectedIds) selectedIds - conta.id else selectedIds + conta.id
+                        } else {
+                            onContaClick(conta.id)
+                        }
+                    }
                 )
             }
+        }
+
+        acaoEmLotePendente?.let { acao ->
+            val title = if (acao == AcaoEmLote.MARCAR_PAGAS) "Confirmar baixa em lote" else "Mover para a lixeira?"
+            val message = if (acao == AcaoEmLote.MARCAR_PAGAS) {
+                "${selectedIds.size} conta(s) serão marcadas como ${if (direcao == ContaDirecao.RECEBER) "recebidas" else "pagas"}."
+            } else {
+                "${selectedIds.size} conta(s) serão removidas da lista principal e poderão ser restauradas pela lixeira."
+            }
+            AlertDialog(
+                onDismissRequest = { acaoEmLotePendente = null },
+                title = { Text(title) },
+                text = { Text(message) },
+                confirmButton = {
+                    Button(onClick = {
+                        scope.launch {
+                            if (acao == AcaoEmLote.MARCAR_PAGAS) ContaStorage.marcarComoPagoAsync(context, selectedIds)
+                            else ContaStorage.moverParaLixeiraAsync(context, selectedIds)
+                            selectedIds = emptySet()
+                            acaoEmLotePendente = null
+                            carregarContas()
+                        }
+                    }) { Text("Confirmar") }
+                },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { acaoEmLotePendente = null }) { Text("Cancelar") } }
+            )
         }
     }
 }
 
 @Composable
-private fun ContaCard(conta: ContaSalva, onClick: () -> Unit) {
+private fun ContaCard(
+    conta: ContaSalva,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onSelectionChange: (Boolean) -> Unit,
+    onClick: () -> Unit
+) {
     val statusColor = Color(statusColorHex(conta))
     Card(
         modifier = Modifier
@@ -266,6 +456,9 @@ private fun ContaCard(conta: ContaSalva, onClick: () -> Unit) {
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (selectionMode) {
+                Checkbox(checked = selected, onCheckedChange = onSelectionChange)
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     conta.fornecedor.ifBlank { conta.banco },

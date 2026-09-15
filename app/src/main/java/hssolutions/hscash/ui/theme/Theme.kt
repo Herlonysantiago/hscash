@@ -40,6 +40,7 @@ fun HsCashTheme(
 ) {
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> LightColorScheme
+        // As telas atuais usam superfícies claras fixas; manter a paleta clara evita texto branco em fundo claro.
         darkTheme -> LightColorScheme
         else -> LightColorScheme
     }

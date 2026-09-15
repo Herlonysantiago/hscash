@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -41,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -51,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.launch
 
 @Composable
 fun MaisScreen(
@@ -62,21 +66,43 @@ fun MaisScreen(
     onOpenTrash: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
+    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val helpTargets = rememberScreenHelpTargets()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .background(Color(0xFFF5F7FA))
+            .verticalScroll(scrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Mais", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        MenuCard("Clientes", "Cadastro e historico de cobrancas", Icons.Default.Info, onOpenClients)
-        MenuCard("Cobrancas", "Recebimentos em aberto para cobrar", Icons.Default.Notifications, onOpenCharges)
-        MenuCard("Lixeira", "Restaurar contas removidas", Icons.Default.Backup, onOpenTrash)
-        MenuCard("Calendario", "Visualizar vencimentos por dia", Icons.Default.CalendarMonth, onOpenCalendar)
-        MenuCard("Relatorio mensal", "Totais pagos e exportacao em PDF", Icons.Default.ShowChart, onOpenReport)
-        MenuCard("Configuracoes", "Backup, seguranca, lembretes e privacidade", Icons.Default.Lock, onOpenSettings)
-        MenuCard("Ajuda inicial", "Ver explicacao rapida do app", Icons.Default.Info, onOpenOnboarding)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Mais", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            ScreenHelp(
+                screenKey = "mais",
+                steps = listOf(
+                    ScreenHelpStep("Clientes", "Cadastre clientes e consulte o histórico das cobranças vinculadas a eles.", HelpFocus.TOP, "more_clients"),
+                    ScreenHelpStep("Relatório mensal", "Consulte os totais do mês por categoria e gere um relatório em PDF.", HelpFocus.CENTER, "more_report"),
+                    ScreenHelpStep("Configurações", "Ajuste backups, widget, proteção do aplicativo e lembretes.", HelpFocus.CENTER, "more_settings"),
+                    ScreenHelpStep("Ajuda permanente", "Abra este guia completo novamente sempre que precisar.", HelpFocus.BOTTOM, "more_help")
+                ),
+                targets = helpTargets,
+                onStepChanged = { index ->
+                    scope.launch {
+                        val fraction = listOf(0f, 0.45f, 0.7f, 1f)[index]
+                        scrollState.animateScrollTo((scrollState.maxValue * fraction).toInt())
+                    }
+                }
+            )
+        }
+        MenuCard("Clientes", "Cadastro e historico de cobrancas", Icons.Default.Info, modifier = Modifier.screenHelpTarget(helpTargets, "more_clients"), onClick = onOpenClients)
+        MenuCard("Cobrancas", "Recebimentos em aberto para cobrar", Icons.Default.Notifications, onClick = onOpenCharges)
+        MenuCard("Lixeira", "Restaurar contas removidas", Icons.Default.Backup, onClick = onOpenTrash)
+        MenuCard("Calendario", "Visualizar vencimentos por dia", Icons.Default.CalendarMonth, onClick = onOpenCalendar)
+        MenuCard("Relatorio mensal", "Totais pagos e exportacao em PDF", Icons.Default.ShowChart, modifier = Modifier.screenHelpTarget(helpTargets, "more_report"), onClick = onOpenReport)
+        MenuCard("Configuracoes", "Backup, seguranca, lembretes e privacidade", Icons.Default.Lock, modifier = Modifier.screenHelpTarget(helpTargets, "more_settings"), onClick = onOpenSettings)
+        MenuCard("Ajuda e tutorial", "Conheça todas as funções do HS Cash", Icons.Default.Info, modifier = Modifier.screenHelpTarget(helpTargets, "more_help"), onClick = onOpenOnboarding)
     }
 }
 
@@ -85,6 +111,9 @@ fun ConfiguracoesScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val helpTargets = rememberScreenHelpTargets()
     var reminders by remember { mutableStateOf(AppSettings.reminderDays(context)) }
     var todaySummary by remember { mutableStateOf(AppSettings.isTodaySummaryEnabled(context)) }
     var tomorrowSummary by remember { mutableStateOf(AppSettings.isTomorrowSummaryEnabled(context)) }
@@ -101,7 +130,7 @@ fun ConfiguracoesScreen(
     var showPrivacyPolicy by remember { mutableStateOf(false) }
     var notificationTestMessage by remember { mutableStateOf<String?>(null) }
     val biometricAvailable = remember { BiometricAuthHelper.canUseBiometric(context) }
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) BackupHelper.importBackup(context, uri)
     }
     val backupFolderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
@@ -128,27 +157,53 @@ fun ConfiguracoesScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.material3.IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Voltar")
+                Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = Color(0xFF102A43))
             }
-            Column {
-                Text("Configuracoes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Configuracoes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
                 Text("Backup, seguranca e lembretes", color = Color(0xFF6B7280))
             }
+            ScreenHelp(
+                screenKey = "configuracoes",
+                steps = listOf(
+                    ScreenHelpStep("Exportar backup", "Gere uma cópia completa das contas e dos anexos para guardar ou compartilhar.", HelpFocus.TOP, "settings_export"),
+                    ScreenHelpStep("Importar backup", "Restaure um backup ZIP atual ou um arquivo JSON de versões antigas.", HelpFocus.TOP, "settings_import"),
+                    ScreenHelpStep("Widget", "Adicione ou atualize o resumo do HS Cash na tela inicial do celular.", HelpFocus.TOP, "settings_widget"),
+                    ScreenHelpStep("Backup automático", "Escolha uma pasta e mantenha uma cópia atualizada sempre que os dados mudarem.", HelpFocus.CENTER, "settings_auto_backup"),
+                    ScreenHelpStep("Proteção do aplicativo", "Defina uma senha e, quando disponível, use a biometria para proteger seus dados.", HelpFocus.CENTER, "settings_security"),
+                    ScreenHelpStep("Lembretes", "Escolha os dias, horários e resumos que serão enviados nas notificações.", HelpFocus.BOTTOM, "settings_reminders")
+                ),
+                targets = helpTargets,
+                onStepChanged = { index ->
+                    scope.launch {
+                        val fraction = listOf(0f, 0f, 0.08f, 0.3f, 0.62f, 1f)[index]
+                        scrollState.animateScrollTo((scrollState.maxValue * fraction).toInt())
+                    }
+                }
+            )
         }
-        MenuCard("Exportar backup", "Gerar arquivo JSON completo", Icons.Default.Backup) {
+        MenuCard("Exportar backup", "Gerar backup completo com anexos", Icons.Default.Backup, modifier = Modifier.screenHelpTarget(helpTargets, "settings_export")) {
             BackupHelper.shareBackup(context)
         }
-        MenuCard("Importar backup", "Restaurar contas de um arquivo JSON", Icons.Default.FileUpload) {
-            importLauncher.launch("application/json")
+        MenuCard("Importar backup", "Restaurar backup ZIP ou JSON antigo", Icons.Default.FileUpload, modifier = Modifier.screenHelpTarget(helpTargets, "settings_import")) {
+            importLauncher.launch(arrayOf("application/zip", "application/json", "application/octet-stream"))
+        }
+        MenuCard("Adicionar widget a tela inicial", "Mostra o resumo das contas; toque para adicionar ou atualizar", Icons.Default.Refresh, modifier = Modifier.screenHelpTarget(helpTargets, "settings_widget")) {
+            HsCashWidgetProvider.refresh(context)
+            notificationTestMessage = if (HsCashWidgetProvider.requestAddToHomeScreen(context)) {
+                "Confirme no Android para adicionar o widget a tela inicial."
+            } else {
+                "Widget atualizado. Para adiciona-lo, mantenha pressionada a tela inicial e abra Widgets."
+            }
         }
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().screenHelpTarget(helpTargets, "settings_auto_backup"),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
             shape = RoundedCornerShape(8.dp)
@@ -159,7 +214,7 @@ fun ConfiguracoesScreen(
             ) {
                 SummarySwitchRow(
                     title = "Backup automatico local",
-                    subtitle = "Cria backup JSON sempre que os dados mudam.",
+                    subtitle = "Cria backup completo sempre que os dados mudam.",
                     checked = autoLocalBackup,
                     onCheckedChange = { checked ->
                         autoLocalBackup = checked
@@ -191,7 +246,7 @@ fun ConfiguracoesScreen(
         }
 
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().screenHelpTarget(helpTargets, "settings_security"),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
             shape = RoundedCornerShape(8.dp)
@@ -254,7 +309,7 @@ fun ConfiguracoesScreen(
         }
 
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().screenHelpTarget(helpTargets, "settings_reminders"),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
             shape = RoundedCornerShape(8.dp)
@@ -444,7 +499,8 @@ private fun SetPasswordDialog(onDismiss: () -> Unit, onSave: (String, String, St
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Nova senha") },
                     singleLine = true,
-                    visualTransformation = PasswordVisualTransformation()
+                    visualTransformation = PasswordVisualTransformation(),
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 androidx.compose.material3.OutlinedTextField(
                     value = confirmation,
@@ -456,7 +512,8 @@ private fun SetPasswordDialog(onDismiss: () -> Unit, onSave: (String, String, St
                     label = { Text("Confirmar senha") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
-                    isError = error != null
+                    isError = error != null,
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 androidx.compose.material3.OutlinedTextField(
                     value = securityQuestion,
@@ -467,7 +524,8 @@ private fun SetPasswordDialog(onDismiss: () -> Unit, onSave: (String, String, St
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Pergunta de seguranca") },
                     placeholder = { Text("Ex: Nome da minha primeira escola") },
-                    singleLine = true
+                    singleLine = true,
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 androidx.compose.material3.OutlinedTextField(
                     value = securityAnswer,
@@ -477,7 +535,8 @@ private fun SetPasswordDialog(onDismiss: () -> Unit, onSave: (String, String, St
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Resposta de seguranca") },
-                    singleLine = true
+                    singleLine = true,
+                    colors = hsCashOutlinedTextFieldColors()
                 )
                 error?.let {
                     Text(it, color = Color(0xFFD32F2F), style = MaterialTheme.typography.bodySmall)
@@ -520,7 +579,8 @@ private fun SummaryHoursField(
         enabled = enabled,
         label = { Text("Horarios") },
         supportingText = { Text("Use hora ou hora:minuto. Ex: 8:00, 12:30, 18") },
-        singleLine = true
+        singleLine = true,
+        colors = hsCashOutlinedTextFieldColors()
     )
 }
 
@@ -548,9 +608,15 @@ private fun SummarySwitchRow(
 }
 
 @Composable
-private fun MenuCard(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
+private fun MenuCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = Color.White),
