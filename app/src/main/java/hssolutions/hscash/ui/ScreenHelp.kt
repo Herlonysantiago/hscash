@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -114,13 +115,13 @@ fun ScreenHelp(
         Surface(
             modifier = modifier.size(42.dp),
             shape = CircleShape,
-            color = if (darkButton) Color.Black.copy(alpha = 0.48f) else Color(0xFFE8F2FC)
+            color = if (darkButton) Color.Black.copy(alpha = 0.48f) else MaterialTheme.colorScheme.surfaceVariant
         ) {
             IconButton(onClick = { stepIndex = 0; show = true }) {
                 Icon(
                     Icons.Default.HelpOutline,
                     contentDescription = "Ajuda desta tela",
-                    tint = if (darkButton) Color.White else Color(0xFF0B3D6E)
+                    tint = if (darkButton) Color.White else MaterialTheme.colorScheme.primary
                 )
             }
         }
@@ -174,20 +175,20 @@ fun ScreenHelp(
                     modifier = Modifier
                         .align(if (explanationAtBottom) Alignment.BottomCenter else Alignment.TopCenter)
                         .padding(horizontal = 16.dp, vertical = 22.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     shape = RoundedCornerShape(18.dp)
                 ) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("${stepIndex + 1} de ${steps.size}", color = Color(0xFF64748B))
+                            Text("${stepIndex + 1} de ${steps.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             TextButton(onClick = {
                                 AppSettings.setScreenHelpSeen(context, screenKey)
                                 show = false
                             }) { Text("Encerrar") }
                         }
-                        Text(step.title, fontWeight = FontWeight.Bold, color = Color(0xFF102A43))
-                        Text(step.description, color = Color(0xFF334155))
-                        Text("Precisa de mais ajuda? herlonys97@gmail.com", color = Color(0xFF64748B))
+                        Text(step.title, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(step.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Precisa de mais ajuda? herlonys97@gmail.com", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = {
                                 runCatching { context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:herlonys97@gmail.com"))) }

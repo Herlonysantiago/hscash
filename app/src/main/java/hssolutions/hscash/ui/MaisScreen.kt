@@ -23,8 +23,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
@@ -58,21 +61,27 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun MaisScreen(
+    onOpenSpaces: () -> Unit,
+    onOpenOnlineAccount: () -> Unit,
+    onOpenHistory: () -> Unit,
     onOpenCalendar: () -> Unit,
     onOpenReport: () -> Unit,
     onOpenOnboarding: () -> Unit,
     onOpenClients: () -> Unit,
     onOpenCharges: () -> Unit,
+    onOpenAlerts: () -> Unit,
     onOpenTrash: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
+    val context = LocalContext.current
+    val activeSpace = remember { SpaceStorage.active(context) }
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     val helpTargets = rememberScreenHelpTargets()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F7FA))
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -96,19 +105,48 @@ fun MaisScreen(
                 }
             )
         }
-        MenuCard("Clientes", "Cadastro e historico de cobrancas", Icons.Default.Info, modifier = Modifier.screenHelpTarget(helpTargets, "more_clients"), onClick = onOpenClients)
-        MenuCard("Cobrancas", "Recebimentos em aberto para cobrar", Icons.Default.Notifications, onClick = onOpenCharges)
-        MenuCard("Lixeira", "Restaurar contas removidas", Icons.Default.Backup, onClick = onOpenTrash)
-        MenuCard("Calendario", "Visualizar vencimentos por dia", Icons.Default.CalendarMonth, onClick = onOpenCalendar)
-        MenuCard("Relatorio mensal", "Totais pagos e exportacao em PDF", Icons.Default.ShowChart, modifier = Modifier.screenHelpTarget(helpTargets, "more_report"), onClick = onOpenReport)
-        MenuCard("Configuracoes", "Backup, seguranca, lembretes e privacidade", Icons.Default.Lock, modifier = Modifier.screenHelpTarget(helpTargets, "more_settings"), onClick = onOpenSettings)
+        MenuSectionTitle("ESPAÇO E CONTA")
+        MenuCard(
+            "${activeSpace.name} · ${spaceTypeLabel(activeSpace.type)}",
+            "Espaço ativo — toque para trocar ou personalizar",
+            spaceIcon(activeSpace.icon),
+            onClick = onOpenSpaces
+        )
+        MenuCard("Conta online", "Login, sincronização e segurança da nuvem", Icons.Default.CloudDone, onClick = onOpenOnlineAccount)
+
+        MenuSectionTitle("FINANCEIRO")
+        MenuCard("Central de alertas", "Vencidas, vencimentos e ações pendentes", Icons.Default.Notifications, onClick = onOpenAlerts)
+        MenuCard("Calendário", "Visualize vencimentos organizados por dia", Icons.Default.CalendarMonth, onClick = onOpenCalendar)
+        MenuCard("Relatório mensal", "Totais, categorias e exportação em PDF", Icons.Default.ShowChart, modifier = Modifier.screenHelpTarget(helpTargets, "more_report"), onClick = onOpenReport)
+        MenuCard("Histórico", "Consulte pagamentos e movimentações anteriores", Icons.Default.History, onClick = onOpenHistory)
+
+        MenuSectionTitle("CLIENTES E COBRANÇAS")
+        MenuCard("Clientes", "Cadastro e histórico de cobranças", Icons.Default.Info, modifier = Modifier.screenHelpTarget(helpTargets, "more_clients"), onClick = onOpenClients)
+        MenuCard("Cobranças", "Recebimentos em aberto para cobrar", Icons.Default.Notifications, onClick = onOpenCharges)
+
+        MenuSectionTitle("APLICATIVO")
+        MenuCard("Configurações", "Aparência, backup, segurança e lembretes", Icons.Default.Lock, modifier = Modifier.screenHelpTarget(helpTargets, "more_settings"), onClick = onOpenSettings)
+        MenuCard("Lixeira", "Restaure contas removidas", Icons.Default.Backup, onClick = onOpenTrash)
         MenuCard("Ajuda e tutorial", "Conheça todas as funções do HS Cash", Icons.Default.Info, modifier = Modifier.screenHelpTarget(helpTargets, "more_help"), onClick = onOpenOnboarding)
     }
 }
 
 @Composable
+private fun MenuSectionTitle(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary
+    )
+}
+
+@Composable
 fun ConfiguracoesScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    themeMode: String = ThemeMode.SYSTEM,
+    onThemeModeChanged: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -163,11 +201,11 @@ fun ConfiguracoesScreen(
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.material3.IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = Color(0xFF102A43))
+                Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = MaterialTheme.colorScheme.onSurface)
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text("Configuracoes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
-                Text("Backup, seguranca e lembretes", color = Color(0xFF6B7280))
+                Text("Configuracoes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text("Backup, seguranca e lembretes", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             ScreenHelp(
                 screenKey = "configuracoes",
@@ -188,6 +226,30 @@ fun ConfiguracoesScreen(
                 }
             )
         }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Aparencia", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text("Escolha como o HS Cash aparece neste aparelho.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        ThemeMode.LIGHT to "Claro",
+                        ThemeMode.DARK to "Escuro",
+                        ThemeMode.SYSTEM to "Celular"
+                    ).forEach { (mode, label) ->
+                        FilterChip(
+                            selected = themeMode == mode,
+                            onClick = { onThemeModeChanged(mode) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
+        }
         MenuCard("Exportar backup", "Gerar backup completo com anexos", Icons.Default.Backup, modifier = Modifier.screenHelpTarget(helpTargets, "settings_export")) {
             BackupHelper.shareBackup(context)
         }
@@ -204,8 +266,8 @@ fun ConfiguracoesScreen(
         }
         Card(
             modifier = Modifier.fillMaxWidth().screenHelpTarget(helpTargets, "settings_auto_backup"),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             shape = RoundedCornerShape(8.dp)
         ) {
             Column(
@@ -221,7 +283,7 @@ fun ConfiguracoesScreen(
                         AppSettings.setAutoLocalBackupEnabled(context, checked)
                     }
                 )
-                Text("Destino: $localBackupLocation", color = Color(0xFF6B7280), style = MaterialTheme.typography.bodySmall)
+                Text("Destino: $localBackupLocation", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 Text(
                     text = "Para maior seguranca, mantenha tambem uma copia em local seguro, como nuvem, pendrive ou outro aparelho.",
                     color = Color(0xFFB45309),
@@ -247,8 +309,8 @@ fun ConfiguracoesScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth().screenHelpTarget(helpTargets, "settings_security"),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             shape = RoundedCornerShape(8.dp)
         ) {
             Column(
@@ -310,16 +372,16 @@ fun ConfiguracoesScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth().screenHelpTarget(helpTargets, "settings_reminders"),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             shape = RoundedCornerShape(8.dp)
         ) {
             Column(
                 modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Lembretes", fontWeight = FontWeight.Bold, color = Color(0xFF111827))
-                Text("Escolha quando receber alertas de vencimento.", color = Color(0xFF6B7280))
+                Text("Lembretes", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text("Escolha quando receber alertas de vencimento.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(3, 1, 0).forEach { day ->
                         val label = if (day == 0) "No dia" else "${day}d antes"
@@ -411,7 +473,7 @@ fun ConfiguracoesScreen(
                 notificationTestMessage?.let {
                     Text(
                         text = it,
-                        color = Color(0xFF6B7280),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -453,14 +515,14 @@ private fun InfoDialog(title: String, body: String, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(title, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
+            Text(title, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(body, color = Color(0xFF374151), style = MaterialTheme.typography.bodyMedium)
+                Text(body, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium)
             }
         },
         confirmButton = {
@@ -487,7 +549,7 @@ private fun SetPasswordDialog(onDismiss: () -> Unit, onSave: (String, String, St
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     "Use pelo menos 4 caracteres. Essa senha sera pedida ao abrir o app.",
-                    color = Color(0xFF6B7280),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
                 androidx.compose.material3.OutlinedTextField(
@@ -600,8 +662,8 @@ private fun SummarySwitchRow(
     ) {
         Icon(icon, contentDescription = null, tint = if (enabled) Color(0xFF1565C0) else Color(0xFF9CA3AF))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, fontWeight = FontWeight.Bold, color = if (enabled) Color(0xFF111827) else Color(0xFF6B7280))
-            Text(subtitle, color = Color(0xFF6B7280), style = MaterialTheme.typography.bodySmall)
+            Text(title, fontWeight = FontWeight.Bold, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
         Switch(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
     }
@@ -619,13 +681,25 @@ private fun MenuCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(8.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
-            Text(subtitle, color = Color(0xFF6B7280))
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

@@ -16,11 +16,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,26 +33,43 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 @Composable
-fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
+fun HistoricoScreen(
+    onContaClick: (String) -> Unit = {},
+    onOpenCategoryEvolution: () -> Unit = {}
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
     val contaList = rememberContaListState()
     val contas = contaList.contas
     val helpTargets = rememberScreenHelpTargets()
+    var activities by remember { mutableStateOf<List<ActivityLogItem>>(emptyList()) }
+
+    fun refreshActivities() {
+        scope.launch {
+            activities = ActivityLogStorage.listarRecentesAsync(context, limit = 20)
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 contaList.refresh()
+                refreshActivities()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshActivities()
     }
 
     val pagas = contas.filter { it.status == ContaStatus.PAGO }
@@ -76,20 +96,48 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
         Text(
             text = "Pagamentos e recebimentos concluidos",
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF6B7280),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 2.dp)
         )
+        TextButton(
+            onClick = onOpenCategoryEvolution,
+            modifier = Modifier.padding(top = 4.dp)
+        ) {
+            Text("Ver evolução por categoria")
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize().screenHelpTarget(helpTargets, "history_list"),
             contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (activities.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Movimentações recentes",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+                items(activities, key = { it.id }) { activity ->
+                    ActivityLogCard(activity = activity, onContaClick = onContaClick)
+                }
+                item {
+                    Text(
+                        text = "Contas concluídas",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
+                    )
+                }
+            }
+
             if (pagas.isEmpty()) {
                 item {
                     Text(
                         text = "Nenhum registro concluido ainda.",
-                        color = Color(0xFF4B5563)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -99,8 +147,8 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onContaClick(conta.id) },
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Row(
@@ -113,12 +161,15 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
                             Text(
                                 text = conta.fornecedor.ifBlank { conta.banco },
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF111827)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "${if (conta.direcao == ContaDirecao.RECEBER) "Recebido" else "Pago"} - ${conta.categoria}",
+                                text = buildString {
+                                    append("${if (conta.direcao == ContaDirecao.RECEBER) "Recebido" else "Pago"} - ${conta.categoria}")
+                                    conta.subcategoria?.takeIf(String::isNotBlank)?.let { append(" • $it") }
+                                },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF6B7280)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             val dataConfirmacao = conta.pagoEm?.let {
                                 SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).format(Date(it))
@@ -129,7 +180,7 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
                                     conta.formaPagamento?.takeIf { it.isNotBlank() }?.let { append(" • $it") }
                                 },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF6B7280)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Text(
@@ -140,6 +191,50 @@ fun HistoricoScreen(onContaClick: (String) -> Unit = {}) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ActivityLogCard(
+    activity: ActivityLogItem,
+    onContaClick: (String) -> Unit
+) {
+    val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.forLanguageTag("pt-BR")) }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (activity.contaId != null) {
+                    Modifier.clickable { onContaClick(activity.contaId) }
+                } else {
+                    Modifier
+                }
+            ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = activity.title,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            activity.details?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = buildString {
+                    append(dateFormat.format(Date(activity.createdAt)))
+                    activity.actorName?.let { append(" • $it") }
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

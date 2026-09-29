@@ -23,8 +23,18 @@ object ClipboardHelper {
             return
         }
 
+        val copyValue = if (expectedLength.isNotEmpty()) digits else value.trim()
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText(label, digits))
-        Toast.makeText(context, "$label copiado: ${digits.length} digitos", Toast.LENGTH_SHORT).show()
+        clipboard?.setPrimaryClip(ClipData.newPlainText(label, copyValue))
+        Toast.makeText(
+            context,
+            if (expectedLength.isNotEmpty()) "$label copiado: ${digits.length} digitos" else "$label copiado",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    fun paste(context: Context): String? {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        return clipboard?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()?.takeIf(String::isNotBlank)
     }
 }

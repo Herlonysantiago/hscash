@@ -31,7 +31,10 @@ object SupabaseProvider {
                 supabaseUrl = config.url,
                 supabaseKey = config.publishableKey
             ) {
-                install(Auth)
+                install(Auth) {
+                    scheme = "hscash"
+                    host = "auth-callback"
+                }
                 install(Postgrest)
                 install(Realtime)
                 install(Storage)

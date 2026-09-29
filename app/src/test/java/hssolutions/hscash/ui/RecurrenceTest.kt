@@ -24,6 +24,21 @@ class RecurrenceTest {
     }
 
     @Test
+    fun `recorrencias de dois tres seis e doze meses`() {
+        assertEquals("15/11/2026", nextRecurrenceDate("15/09/2026", "Bimestral"))
+        assertEquals("15/12/2026", nextRecurrenceDate("15/09/2026", "Trimestral"))
+        assertEquals("15/03/2027", nextRecurrenceDate("15/09/2026", "Semestral"))
+        assertEquals("15/09/2027", nextRecurrenceDate("15/09/2026", "Anual"))
+    }
+
+    @Test
+    fun `recorrencia personalizada aceita meses semanas e anos`() {
+        assertEquals("15/01/2027", nextRecurrenceDate("15/09/2026", "A cada 4 meses"))
+        assertEquals("29/09/2026", nextRecurrenceDate("15/09/2026", "A cada 2 semanas"))
+        assertEquals("15/09/2028", nextRecurrenceDate("15/09/2026", "A cada 2 anos"))
+    }
+
+    @Test
     fun `datas impossiveis sao rejeitadas`() {
         assertTrue(isValidContaDate("29/02/2024"))
         assertFalse(isValidContaDate("29/02/2025"))

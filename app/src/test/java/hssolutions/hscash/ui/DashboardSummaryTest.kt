@@ -39,6 +39,28 @@ class DashboardSummaryTest {
     }
 
     @Test
+    fun `boleto vencido pago no mes atual entra no total pago do mes atual`() {
+        val boletoVencido = conta(
+            id = "vencido-pago-agora",
+            vencimento = "10/08/2026",
+            centavos = 125_50,
+            status = ContaStatus.PAGO,
+            pagoEm = date(2026, Calendar.SEPTEMBER, 15).timeInMillis
+        )
+
+        val resumo = ContaResumo.from(
+            contas = listOf(boletoVencido),
+            month = hoje,
+            allMonths = false,
+            referenceToday = hoje
+        )
+
+        assertEquals(1, resumo.totalPagoContas)
+        assertMoney(125_50, resumo.totalPagoMes)
+        assertEquals(0, resumo.vencidas)
+    }
+
+    @Test
     fun `filtro todas vencidas inclui outros meses mesmo com mes selecionado`() {
         val vencidas = filterDashboardAccounts(
             contas(), hoje, allMonths = false,

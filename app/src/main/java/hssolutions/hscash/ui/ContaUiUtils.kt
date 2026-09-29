@@ -31,14 +31,19 @@ fun isContaVencida(conta: ContaSalva): Boolean {
 }
 
 fun parseContaDate(value: String): Calendar? {
-    return try {
-        val date = SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).apply {
-            isLenient = false
-        }.parse(value) ?: return null
-        Calendar.getInstance().apply { time = date }
-    } catch (_: Exception) {
-        null
+    val normalized = value.trim()
+    val formats = listOf("dd/MM/yyyy", "dd-MM-yyyy", "dd.MM.yyyy", "yyyy-MM-dd")
+    for (pattern in formats) {
+        try {
+            val date = SimpleDateFormat(pattern, Locale.forLanguageTag("pt-BR")).apply {
+                isLenient = false
+            }.parse(normalized) ?: continue
+            return Calendar.getInstance().apply { time = date }
+        } catch (_: Exception) {
+            // Tenta o formato seguinte.
+        }
     }
+    return null
 }
 
 fun isValidContaDate(value: String): Boolean = parseContaDate(value) != null
@@ -56,8 +61,32 @@ fun nextRecurrenceDate(current: String, recurrence: String): String? {
     val date = parseContaDate(current) ?: return null
     when (recurrence) {
         "Semanal" -> date.add(Calendar.DAY_OF_YEAR, 7)
+        "Bimestral" -> date.add(Calendar.MONTH, 2)
+        "Trimestral" -> date.add(Calendar.MONTH, 3)
+        "Semestral" -> date.add(Calendar.MONTH, 6)
         "Anual" -> date.add(Calendar.YEAR, 1)
-        else -> date.add(Calendar.MONTH, 1)
+        "Mensal" -> date.add(Calendar.MONTH, 1)
+        else -> {
+            val custom = Regex("A cada (\\d+) (dia|dias|semana|semanas|mês|meses|ano|anos)", RegexOption.IGNORE_CASE)
+                .matchEntire(recurrence.trim()) ?: return null
+            val amount = custom.groupValues[1].toIntOrNull()?.coerceIn(1, 120) ?: return null
+            when (custom.groupValues[2].lowercase(Locale.forLanguageTag("pt-BR"))) {
+                "dia", "dias" -> date.add(Calendar.DAY_OF_YEAR, amount)
+                "semana", "semanas" -> date.add(Calendar.WEEK_OF_YEAR, amount)
+                "ano", "anos" -> date.add(Calendar.YEAR, amount)
+                else -> date.add(Calendar.MONTH, amount)
+            }
+        }
     }
     return SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).format(date.time)
+}
+
+fun recurrenceLabel(value: String): String = when (value) {
+    "Semanal" -> "Toda semana"
+    "Mensal" -> "Todo mês"
+    "Bimestral" -> "A cada 2 meses"
+    "Trimestral" -> "A cada 3 meses"
+    "Semestral" -> "A cada 6 meses"
+    "Anual" -> "A cada 12 meses"
+    else -> value
 }

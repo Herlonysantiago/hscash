@@ -54,7 +54,7 @@ fun ClientesScreen(onBack: () -> Unit = {}) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F7FA))
+            .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -65,7 +65,7 @@ fun ClientesScreen(onBack: () -> Unit = {}) {
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Clientes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Text("Cadastro e cobranca por WhatsApp", color = Color(0xFF6B7280))
+                    Text("Cadastro e cobranca por WhatsApp", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = {
                     editingCliente = null
@@ -78,7 +78,7 @@ fun ClientesScreen(onBack: () -> Unit = {}) {
 
         if (clientes.isEmpty()) {
             item {
-                Text("Nenhum cliente cadastrado.", color = Color(0xFF6B7280), modifier = Modifier.padding(8.dp))
+                Text("Nenhum cliente cadastrado.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
             }
         } else {
             items(clientes, key = { it.id }) { cliente ->
@@ -129,17 +129,17 @@ private fun ClienteCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onEdit),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(8.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(cliente.nome, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
-                    Text(cliente.whatsapp.ifBlank { "WhatsApp nao informado" }, color = Color(0xFF6B7280))
+                    Text(cliente.nome, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text(cliente.whatsapp.ifBlank { "WhatsApp nao informado" }, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (cliente.observacao.isNotBlank()) {
-                        Text(cliente.observacao, color = Color(0xFF6B7280), style = MaterialTheme.typography.bodySmall)
+                        Text(cliente.observacao, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 Text("${pendencias.size} aberto(s)", color = Color(0xFF0B6B2B), fontWeight = FontWeight.Bold)

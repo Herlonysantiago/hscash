@@ -123,7 +123,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F7FA))
+            .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -132,15 +132,15 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Guia do HS Cash", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFF102A43))
+            Text("Guia do HS Cash", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             TextButton(onClick = onFinish) { Text("Fechar") }
         }
 
-        Text("Passo ${page + 1} de ${helpSteps.size}", color = Color(0xFF64748B), style = MaterialTheme.typography.labelLarge)
+        Text("Passo ${page + 1} de ${helpSteps.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
 
         Card(
             modifier = Modifier.fillMaxWidth().weight(1f),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             shape = RoundedCornerShape(20.dp),
             elevation = CardDefaults.cardElevation(3.dp)
         ) {
@@ -156,13 +156,13 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     Icon(step.icon, contentDescription = null, tint = step.accent, modifier = Modifier.size(46.dp))
                 }
                 Spacer(Modifier.size(24.dp))
-                Text(step.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color(0xFF111827), textAlign = TextAlign.Center)
+                Text(step.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
                 Text(step.description, modifier = Modifier.padding(top = 10.dp), color = Color(0xFF475569), textAlign = TextAlign.Center)
                 Column(modifier = Modifier.fillMaxWidth().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     step.details.forEach { detail ->
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
                             Box(Modifier.padding(top = 7.dp).size(7.dp).background(step.accent, CircleShape))
-                            Text(detail, color = Color(0xFF334155), style = MaterialTheme.typography.bodyLarge)
+                            Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
                         }
                     }
                 }

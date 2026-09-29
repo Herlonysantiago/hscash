@@ -8,6 +8,11 @@ estiverem vazias. Nunca coloque uma `service_role` key no Android.
 1. Crie um projeto em https://supabase.com/dashboard.
 2. No SQL Editor, execute
    `supabase/migrations/202609140001_initial_cloud_schema.sql`.
+   Se o projeto já tinha as tabelas criadas, execute também
+   `supabase/migrations/202609210002_add_pix_fields.sql` para habilitar a
+   sincronização dos dados Pix sem perder registros.
+   Para ativar convites e integrantes, execute em seguida
+   `supabase/migrations/202609210003_space_invites_access.sql`.
 3. Em **Authentication > Providers**, mantenha Email habilitado.
 4. Em **Authentication > URL Configuration**, configure os links do aplicativo
    apenas quando a tela de login por link ou Google for implementada.
@@ -43,4 +48,3 @@ mesmas variaveis de ambiente no servidor de compilacao.
 4. Migracao local com fila de sincronizacao e resolucao de conflitos.
 5. Upload/download de PDFs e comprovantes.
 6. Testes com dois usuarios em aparelhos diferentes.
-

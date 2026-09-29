@@ -51,7 +51,7 @@ fun LixeiraScreen(onBack: () -> Unit = {}) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F7FA))
+            .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -62,30 +62,30 @@ fun LixeiraScreen(onBack: () -> Unit = {}) {
                 }
                 Column {
                     Text("Lixeira", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Text("Contas removidas podem ser restauradas", color = Color(0xFF6B7280))
+                    Text("Contas removidas podem ser restauradas", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
 
         if (contas.isEmpty()) {
             item {
-                Text("Nenhuma conta na lixeira.", color = Color(0xFF6B7280), modifier = Modifier.padding(8.dp))
+                Text("Nenhuma conta na lixeira.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
             }
         } else {
             items(contas, key = { it.id }) { conta ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(conta.fornecedor.ifBlank { conta.banco }, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
-                                Text("${conta.valor} - ${conta.vencimento}", color = Color(0xFF6B7280))
+                                Text(conta.fornecedor.ifBlank { conta.banco }, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                Text("${conta.valor} - ${conta.vencimento}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Text(if (conta.direcao == ContaDirecao.RECEBER) "Receber" else "Pagar", color = Color(0xFF6B7280))
+                            Text(if (conta.direcao == ContaDirecao.RECEBER) "Receber" else "Pagar", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(

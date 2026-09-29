@@ -75,14 +75,17 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.Executors
 
+enum class PaymentScanMode { BOLETO, PIX }
+
 @Composable
 fun BoletosScreen(
     onBack: () -> Unit = {},
-    onBoletoFound: (String) -> Unit = {}
+    onBoletoFound: (String) -> Unit = {},
+    scanMode: PaymentScanMode = PaymentScanMode.BOLETO
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val activity = context as? Activity
+    val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     val helpTargets = rememberScreenHelpTargets()
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
@@ -108,14 +111,13 @@ fun BoletosScreen(
         hasCameraPermission = granted
     }
 
-    DisposableEffect(Unit) {
-        val orientacaoAnterior = activity?.requestedOrientation
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    DisposableEffect(scanMode) {
+        Log.i("HsCashOrientation", "Abrindo scanner em paisagem fixa: $scanMode")
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 
         onDispose {
-            if (orientacaoAnterior != null) {
-                activity.requestedOrientation = orientacaoAnterior
-            }
+            Log.i("HsCashOrientation", "Fechando scanner e restaurando retrato: $scanMode")
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             camera?.cameraControl?.enableTorch(false)
             cameraExecutor.shutdown()
         }
@@ -145,7 +147,7 @@ fun BoletosScreen(
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build()
                             .also {
-                                it.setAnalyzer(cameraExecutor, BarcodeAnalyzer { barcode ->
+                                it.setAnalyzer(cameraExecutor, BarcodeAnalyzer(acceptPix = scanMode == PaymentScanMode.PIX) { barcode ->
                                     if (!abriuDetalhes) {
                                         abriuDetalhes = true
                                         vibrate(context)
@@ -215,7 +217,7 @@ fun BoletosScreen(
                 darkButton = true,
                 modifier = Modifier.align(Alignment.TopCenter).padding(12.dp),
                 steps = listOf(
-                    ScreenHelpStep("Enquadre o código", "Posicione o código de barras dentro da moldura. A leitura acontece automaticamente.", HelpFocus.CENTER, "scanner_frame"),
+                    ScreenHelpStep("Enquadre o código", if (scanMode == PaymentScanMode.PIX) "Posicione o QR Code Pix dentro da moldura. A leitura acontece automaticamente." else "Posicione o código de barras dentro da moldura. A leitura acontece automaticamente.", HelpFocus.CENTER, "scanner_frame"),
                     ScreenHelpStep("Use o flash", "Ligue a iluminação quando o código estiver escuro ou com pouco contraste.", HelpFocus.TOP, "scanner_flash"),
                     ScreenHelpStep("Digitação manual", "Se a câmera não conseguir ler, toque no lápis e informe a linha digitável.", HelpFocus.BOTTOM, "scanner_manual")
                 ),
@@ -269,7 +271,7 @@ fun BoletosScreen(
                             erroManual = null
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Codigo de barras ou linha digitavel") },
+                        label = { Text(if (scanMode == PaymentScanMode.PIX) "Pix Copia e Cola" else "Codigo de barras ou linha digitavel") },
                         singleLine = false,
                         colors = hsCashOutlinedTextFieldColors()
                     )
@@ -285,12 +287,15 @@ fun BoletosScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        val parsedPix = PixUtils.parse(codigoManual)
                         val digits = codigoManual.filter(Char::isDigit)
-                        if (parseBoleto(digits) == null) {
+                        if (scanMode == PaymentScanMode.PIX && !parsedPix.valid) {
+                            erroManual = parsedPix.error ?: "Código Pix inválido."
+                        } else if (scanMode == PaymentScanMode.BOLETO && parseBoleto(digits) == null) {
                             erroManual = "Codigo invalido: ${digits.length} digitos. Use 47 para boleto bancario, 48 para convenio ou 44 do codigo de barras."
                         } else {
                             mostrarDigitacao = false
-                            onBoletoFound(digits)
+                            onBoletoFound(if (scanMode == PaymentScanMode.PIX) parsedPix.payload else digits)
                         }
                     }
                 ) {
@@ -356,7 +361,7 @@ fun BoletoDetalheScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F7FA))
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -369,14 +374,14 @@ fun BoletoDetalheScreen(
                 text = "Dados do Boleto",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF111827)
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
 
         if (boletoInfo == null) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                 border = BorderStroke(1.dp, Color(0xFFD32F2F).copy(alpha = 0.35f)),
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -395,7 +400,7 @@ fun BoletoDetalheScreen(
                         style = MaterialTheme.typography.bodySmall
                     )
                     SelectionContainer {
-                        Text(text = codigo, color = Color(0xFF111827))
+                        Text(text = codigo, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -435,8 +440,8 @@ fun BoletoDetalheScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             shape = RoundedCornerShape(8.dp)
         ) {
             Column(
@@ -446,7 +451,7 @@ fun BoletoDetalheScreen(
                 Text(
                     text = "Organizacao",
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color(0xFF4B5563),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Bold
                 )
                 OutlinedTextField(
@@ -457,14 +462,11 @@ fun BoletoDetalheScreen(
                     singleLine = true,
                     colors = hsCashOutlinedTextFieldColors()
                 )
-                OutlinedTextField(
+                CategorySelector(
                     value = categoria,
                     onValueChange = { categoria = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Categoria") },
-                    placeholder = { Text("Ex: Luz, Agua, Internet") },
-                    singleLine = true,
-                    colors = hsCashOutlinedTextFieldColors()
+                    direction = ContaDirecao.PAGAR
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -473,23 +475,13 @@ fun BoletoDetalheScreen(
                 ) {
                     Text(
                         text = "Conta recorrente",
-                        color = Color(0xFF111827),
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
                     )
                     Switch(checked = recorrente, onCheckedChange = { recorrente = it })
                 }
                 if (recorrente) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Semanal", "Mensal", "Anual").forEach { option ->
-                            TextButton(onClick = { recorrencia = option }) {
-                                Text(
-                                    text = option,
-                                    color = if (recorrencia == option) Color(0xFF1565C0) else Color(0xFF4B5563),
-                                    fontWeight = if (recorrencia == option) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
-                        }
-                    }
+                    RecurrenceSelector(value = recorrencia, onValueChange = { recorrencia = it })
                 }
             }
         }
@@ -498,7 +490,7 @@ fun BoletoDetalheScreen(
         if (precisaInformarVencimento) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
                 border = BorderStroke(1.dp, Color(0xFFFFA000).copy(alpha = 0.45f)),
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -511,17 +503,15 @@ fun BoletoDetalheScreen(
                         color = Color(0xFF7A4F00),
                         fontWeight = FontWeight.Bold
                     )
-                    OutlinedTextField(
+                    DateInputField(
                         value = vencimentoManual,
                         onValueChange = {
                             vencimentoManual = it
                             erroVencimento = null
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Vencimento (dd/mm/aaaa)") },
-                        singleLine = true,
-                        isError = erroVencimento != null,
-                        colors = hsCashOutlinedTextFieldColors()
+                        label = "Vencimento",
+                        isError = erroVencimento != null
                     )
                     erroVencimento?.let {
                         Text(
@@ -538,7 +528,7 @@ fun BoletoDetalheScreen(
             Text(
                 text = it,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF374151)
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
 
@@ -591,7 +581,7 @@ fun BoletoDetalheScreen(
 private fun BoletoInfoRow(label: String, value: String, accentColor: Color) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.28f)),
         shape = RoundedCornerShape(8.dp)
     ) {
@@ -608,7 +598,7 @@ private fun BoletoInfoRow(label: String, value: String, accentColor: Color) {
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleMedium,
-                color = Color(0xFF111827),
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold
             )
         }

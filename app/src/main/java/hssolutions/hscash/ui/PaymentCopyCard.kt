@@ -33,7 +33,7 @@ fun PaymentCopyCard(
     val barrasValido = barrasDigits.length == 44
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF3FF)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
         border = BorderStroke(1.dp, Color(0xFF1565C0).copy(alpha = 0.32f)),
         shape = RoundedCornerShape(8.dp)
     ) {

@@ -27,10 +27,14 @@ import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -64,13 +68,21 @@ import java.util.Calendar
 import java.util.Locale
 
 @Composable
-fun DashboardScreen(initialFilter: String? = null) {
+fun DashboardScreen(
+    initialFilter: String? = null,
+    onOpenToday: () -> Unit = {},
+    onOpenSpaces: () -> Unit = {},
+    onOpenAlerts: () -> Unit = {},
+    onOpenDrawer: () -> Unit = {}
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val helpListState = rememberLazyListState()
     val helpTargets = rememberScreenHelpTargets()
+    val activeSpace = remember { SpaceStorage.active(context) }
     var contas by remember { mutableStateOf(emptyList<ContaSalva>()) }
+    var readAlertIds by remember { mutableStateOf(AppSettings.readAlertIds(context)) }
     var dashboardAllMonths by remember { mutableStateOf(false) }
     var dashboardMonth by remember { mutableStateOf(startOfDay().apply { set(Calendar.DAY_OF_MONTH, 1) }) }
     var selectedFilter by remember {
@@ -78,7 +90,10 @@ fun DashboardScreen(initialFilter: String? = null) {
     }
 
     fun carregarContas() {
-        scope.launch { contas = ContaStorage.listarContasAsync(context) }
+        scope.launch {
+            contas = ContaStorage.listarContasAsync(context)
+            readAlertIds = AppSettings.readAlertIds(context)
+        }
     }
 
     LaunchedEffect(Unit) { carregarContas() }
@@ -107,20 +122,74 @@ fun DashboardScreen(initialFilter: String? = null) {
     val selectedAccounts = remember(contas, dashboardMonth, dashboardAllMonths, selectedFilter) {
         selectedFilter?.let { filterDashboardAccounts(contas, dashboardMonth, dashboardAllMonths, it) }.orEmpty()
     }
+    val unreadAlertCount = remember(contas, readAlertIds) {
+        buildFinancialAlerts(contas).count { it.id !in readAlertIds }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
       LazyColumn(
           state = helpListState,
           modifier = Modifier
               .fillMaxSize()
-              .background(Color(0xFFF5F7FA))
+              .background(MaterialTheme.colorScheme.background)
               .padding(16.dp),
           verticalArrangement = Arrangement.spacedBy(14.dp)
       ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Dashboard", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
-                Text("Visao geral das contas cadastradas", style = MaterialTheme.typography.bodyMedium, color = Color(0xFF6B7280))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onOpenDrawer) {
+                    Icon(Icons.Default.Menu, contentDescription = "Abrir menu lateral", tint = MaterialTheme.colorScheme.primary)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Dashboard", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Visao geral das contas cadastradas", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+
+        item {
+            Card(
+                onClick = onOpenSpaces,
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = colorFromHex(activeSpace.color).copy(alpha = 0.14f)),
+                border = BorderStroke(1.dp, colorFromHex(activeSpace.color).copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(spaceIcon(activeSpace.icon), contentDescription = null, tint = colorFromHex(activeSpace.color))
+                    Column(Modifier.weight(1f)) {
+                        Text(activeSpace.name, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(spaceTypeLabel(activeSpace.type), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("Trocar", color = colorFromHex(activeSpace.color), fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        item {
+            Card(
+                onClick = onOpenToday,
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Today, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Central Hoje", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("Vencidas, vencendo hoje e proximos dias", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("Abrir", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
 
@@ -297,9 +366,34 @@ fun DashboardScreen(initialFilter: String? = null) {
             }
         }
       }
-      ScreenHelp(
-          screenKey = "dashboard",
+      Row(
           modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 16.dp),
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
+          verticalAlignment = Alignment.CenterVertically
+      ) {
+        BadgedBox(
+            badge = {
+                if (unreadAlertCount > 0) {
+                    Badge {
+                        Text(if (unreadAlertCount > 99) "99+" else unreadAlertCount.toString())
+                    }
+                }
+            }
+        ) {
+            IconButton(onClick = onOpenAlerts) {
+                Icon(
+                    Icons.Default.Notifications,
+                    contentDescription = if (unreadAlertCount > 0) {
+                        "$unreadAlertCount alertas novos"
+                    } else {
+                        "Abrir Central de Alertas"
+                    },
+                    tint = if (unreadAlertCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        ScreenHelp(
+          screenKey = "dashboard",
           steps = listOf(
               ScreenHelpStep("Mude o mês", "Use as setas < e > para voltar ou avançar um mês.", HelpFocus.TOP_ROW, "month_navigation"),
               ScreenHelpStep("Escolha o período", "Toque em Mês para ver apenas o período selecionado ou em Tudo para reunir todo o histórico.", HelpFocus.TOP_OPTIONS, "period_options"),
@@ -315,10 +409,11 @@ fun DashboardScreen(initialFilter: String? = null) {
               selectedFilter = null
               scope.launch {
                   kotlinx.coroutines.yield()
-                  helpListState.animateScrollToItem(listOf(1, 1, 2, 3, 4, 5, 7, 8)[index])
+                  helpListState.animateScrollToItem(listOf(2, 2, 3, 4, 5, 6, 8, 9)[index])
               }
           }
-      )
+        )
+      }
     }
 }
 
@@ -408,20 +503,20 @@ private fun MetricCard(
                 text = value,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF111827)
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF6B7280)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
     if (onClick == null) {
         Card(
             modifier = modifier,
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             shape = RoundedCornerShape(8.dp),
             content = content
         )
@@ -429,8 +524,8 @@ private fun MetricCard(
         Card(
             modifier = modifier,
             onClick = onClick,
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             shape = RoundedCornerShape(8.dp),
             content = content
         )
@@ -443,7 +538,7 @@ private fun SectionTitle(text: String) {
         text = text,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
-        color = Color(0xFF111827),
+        color = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.padding(top = 4.dp)
     )
 }
@@ -467,8 +562,8 @@ private fun PeriodSelector(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(8.dp)
     ) {
         Column(
@@ -483,20 +578,20 @@ private fun PeriodSelector(
                     Icon(
                         Icons.Default.KeyboardArrowLeft,
                         contentDescription = "Mes anterior",
-                        tint = Color(0xFF102A43)
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 Text(
                     text = if (allMonths) "Todos os meses" else monthLabel,
                     modifier = Modifier.weight(1f),
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF111827)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 IconButton(onClick = onNextMonth) {
                     Icon(
                         Icons.Default.KeyboardArrowRight,
                         contentDescription = "Proximo mes",
-                        tint = Color(0xFF102A43)
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -540,8 +635,8 @@ fun StatusContaCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -570,12 +665,12 @@ fun StatusContaCard(
                     text = titulo,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF111827)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = descricao,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF6B7280)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -586,8 +681,8 @@ fun StatusContaCard(
 private fun DashboardAccountsListHeader(title: String, count: Int, onBack: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -598,7 +693,7 @@ private fun DashboardAccountsListHeader(title: String, count: Int, onBack: () ->
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("$count conta(s) encontrada(s) nesta selecao", color = Color(0xFF6B7280))
+                Text("$count conta(s) encontrada(s) nesta selecao", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             TextButton(onClick = onBack) {
                 Text("Voltar ao dashboard")
@@ -612,8 +707,8 @@ private fun DashboardContaCard(conta: ContaSalva) {
     val isReceber = conta.direcao == ContaDirecao.RECEBER
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -634,12 +729,12 @@ private fun DashboardContaCard(conta: ContaSalva) {
                     text = conta.fornecedor.ifBlank { conta.banco },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF111827)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "${if (isReceber) "Receber" else "Pagar"} - ${statusLabel(conta)} - ${conta.vencimento}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF6B7280)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Text(
@@ -656,14 +751,14 @@ private fun DashboardContaCard(conta: ContaSalva) {
 private fun EmptyFilteredCard(message: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(8.dp)
     ) {
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF6B7280),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(16.dp)
         )
     }
@@ -673,8 +768,8 @@ private fun EmptyFilteredCard(message: String) {
 private fun ProximaContaCard(conta: ContaSalva) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -695,12 +790,12 @@ private fun ProximaContaCard(conta: ContaSalva) {
                     text = conta.banco,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF111827)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "Vencimento: ${conta.vencimento}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF6B7280)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Text(
@@ -717,14 +812,14 @@ private fun ProximaContaCard(conta: ContaSalva) {
 private fun EmptyStateCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(8.dp)
     ) {
         Text(
             text = "Nenhuma conta com vencimento futuro.",
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF6B7280),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(16.dp)
         )
     }
@@ -829,7 +924,7 @@ internal data class ContaResumo(
                 data == null || (data.after(amanha) && !sameMonth(data, hoje))
             }
 
-            val contasPagasMes = contasPeriodo
+            val contasPagasMes = contas
                 .filter { it.direcao == ContaDirecao.PAGAR && it.status == ContaStatus.PAGO && if (allMonths) true else paidInMonth(it, month) }
             val pagoMes = contasPagasMes.sumOf { parseValorCentavos(it.valor) }
             val totalPagar = pendentesPagar.sumOf { parseValorCentavos(it.valor) }

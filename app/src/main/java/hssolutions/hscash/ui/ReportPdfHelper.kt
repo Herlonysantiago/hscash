@@ -70,9 +70,13 @@ object ReportPdfHelper {
             y = drawSummary(canvas, y, section, body, "Recebido no mes", recebidas.sumOf { parseCents(it.valor) })
             y += 18f
 
-            val categorias = pagas.groupBy { it.categoria.ifBlank { "Outros" } }
+            val categoriasBase = pagas.groupBy { it.categoria.ifBlank { "Outros" } }
                 .mapValues { entry -> entry.value.sumOf { parseCents(it.valor) } }
                 .toList().sortedByDescending { it.second }
+            val categorias = categoriasBase.map { (categoria, valor) ->
+                val percentual = if (pagoTotal > 0L) valor * 100.0 / pagoTotal else 0.0
+                "$categoria (${String.format(Locale.forLanguageTag("pt-BR"), "%.1f", percentual)}%)" to valor
+            }
             val formas = pagas.groupBy { it.formaPagamento?.takeIf(String::isNotBlank) ?: "Nao informado" }
                 .mapValues { entry -> entry.value.sumOf { parseCents(it.valor) } }
                 .toList().sortedByDescending { it.second }

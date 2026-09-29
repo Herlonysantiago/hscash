@@ -6,6 +6,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 
 class BarcodeAnalyzer(
+    private val acceptPix: Boolean = false,
     private val onBarcodeDetected: (String) -> Unit
 ) : ImageAnalysis.Analyzer {
 
@@ -29,8 +30,14 @@ class BarcodeAnalyzer(
                 val codigoValido = barcodes
                     .asSequence()
                     .mapNotNull { it.rawValue }
-                    .map { it.filter(Char::isDigit) }
-                    .firstOrNull { isLikelyBoletoCode(it) }
+                    .mapNotNull { raw ->
+                        if (acceptPix && PixUtils.isLikelyPix(raw)) {
+                            PixUtils.normalize(raw).takeIf { PixUtils.parse(it).valid }
+                        } else {
+                            raw.filter(Char::isDigit).takeIf { isLikelyBoletoCode(it) }
+                        }
+                    }
+                    .firstOrNull()
 
                 if (codigoValido == null) {
                     leiturasConfirmadas = 0

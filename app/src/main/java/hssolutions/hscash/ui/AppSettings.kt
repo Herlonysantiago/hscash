@@ -28,13 +28,69 @@ object AppSettings {
     private const val KEY_APP_LOCK_PASSWORD_HASH = "app_lock_password_hash"
     private const val KEY_APP_LOCK_PASSWORD_SALT = "app_lock_password_salt"
     private const val KEY_BIOMETRIC_UNLOCK_ENABLED = "biometric_unlock_enabled"
+    private const val KEY_THEME_MODE = "theme_mode"
+    private const val KEY_READ_ALERT_IDS = "read_alert_ids"
     private const val KEY_SECURITY_QUESTION = "security_question"
     private const val KEY_SECURITY_ANSWER_HASH = "security_answer_hash"
     private const val KEY_SECURITY_ANSWER_SALT = "security_answer_salt"
+    private const val KEY_LAST_CLOUD_SYNC_AT = "last_cloud_sync_at"
+    private const val KEY_CLOUD_SYNC_STATE = "cloud_sync_state"
+    private const val KEY_CLOUD_SYNC_ERROR = "cloud_sync_error"
+    private const val KEY_PASSWORD_RESET_REQUESTED_AT = "password_reset_requested_at"
     private const val PBKDF2_PREFIX = "pbkdf2-sha256"
     private const val PBKDF2_ITERATIONS = 210_000
     private const val PBKDF2_KEY_LENGTH_BITS = 256
     private val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    fun themeMode(context: Context): String =
+        prefs(context).getString(KEY_THEME_MODE, ThemeMode.SYSTEM) ?: ThemeMode.SYSTEM
+
+    fun setThemeMode(context: Context, mode: String) {
+        val safeMode = mode.takeIf { it in ThemeMode.ALL } ?: ThemeMode.SYSTEM
+        prefs(context).edit().putString(KEY_THEME_MODE, safeMode).apply()
+    }
+
+    fun lastCloudSyncAt(context: Context): Long =
+        prefs(context).getLong(KEY_LAST_CLOUD_SYNC_AT, 0L)
+
+    fun setLastCloudSyncAt(context: Context, timestamp: Long) {
+        prefs(context).edit().putLong(KEY_LAST_CLOUD_SYNC_AT, timestamp).apply()
+    }
+
+    fun cloudSyncState(context: Context): String =
+        prefs(context).getString(KEY_CLOUD_SYNC_STATE, CloudSyncState.IDLE) ?: CloudSyncState.IDLE
+
+    fun cloudSyncError(context: Context): String =
+        prefs(context).getString(KEY_CLOUD_SYNC_ERROR, "").orEmpty()
+
+    fun setCloudSyncState(context: Context, state: String, error: String = "") {
+        prefs(context).edit()
+            .putString(KEY_CLOUD_SYNC_STATE, state)
+            .putString(KEY_CLOUD_SYNC_ERROR, error.take(240))
+            .apply()
+    }
+
+    fun passwordResetRequestedAt(context: Context): Long =
+        prefs(context).getLong(KEY_PASSWORD_RESET_REQUESTED_AT, 0L)
+
+    fun setPasswordResetRequestedAt(context: Context, timestamp: Long) {
+        prefs(context).edit().putLong(KEY_PASSWORD_RESET_REQUESTED_AT, timestamp).apply()
+    }
+
+    fun readAlertIds(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_READ_ALERT_IDS, emptySet()).orEmpty().toSet()
+
+    fun markAlertRead(context: Context, alertId: String) {
+        prefs(context).edit()
+            .putStringSet(KEY_READ_ALERT_IDS, readAlertIds(context) + alertId)
+            .apply()
+    }
+
+    fun markAlertsRead(context: Context, alertIds: Collection<String>) {
+        prefs(context).edit()
+            .putStringSet(KEY_READ_ALERT_IDS, readAlertIds(context) + alertIds)
+            .apply()
+    }
 
     fun isOnboardingDone(context: Context): Boolean {
         return prefs(context).getBoolean(KEY_ONBOARDING_DONE, false)
@@ -356,4 +412,19 @@ object AppSettings {
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+}
+
+object ThemeMode {
+    const val SYSTEM = "SYSTEM"
+    const val LIGHT = "LIGHT"
+    const val DARK = "DARK"
+    val ALL = setOf(SYSTEM, LIGHT, DARK)
+}
+
+object CloudSyncState {
+    const val IDLE = "IDLE"
+    const val WAITING = "WAITING"
+    const val SYNCING = "SYNCING"
+    const val SYNCED = "SYNCED"
+    const val ERROR = "ERROR"
 }

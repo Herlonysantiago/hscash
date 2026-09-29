@@ -19,6 +19,31 @@ object ReceiptHelper {
         return saveFile(context, contaId, uri, "boletos")
     }
 
+    fun saveCloudAttachment(
+        context: Context,
+        contaId: String,
+        bytes: ByteArray,
+        mimeType: String,
+        boleto: Boolean,
+        preferredName: String? = null
+    ): String? = runCatching {
+        require(bytes.isNotEmpty())
+        val folder = if (boleto) "boletos" else "receipts"
+        val dir = File(context.filesDir, folder).apply { mkdirs() }
+        val safeContaId = contaId.filter { it.isLetterOrDigit() || it == '-' }.ifBlank { "conta" }
+        val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)
+            ?.let(::normalizeExtension)
+            ?: if (mimeType == "application/pdf") "pdf" else "bin"
+        val safePreferredName = preferredName
+            ?.replace(Regex("[^A-Za-z0-9._-]"), "-")
+            ?.trim('-', '.')
+            ?.takeLast(150)
+            ?.takeIf(String::isNotBlank)
+        val file = File(dir, safePreferredName ?: "$safeContaId-cloud-${System.currentTimeMillis()}.$extension")
+        file.writeBytes(bytes)
+        file.absolutePath
+    }.getOrNull()
+
     private fun saveFile(context: Context, contaId: String, uri: Uri, folder: String): String? {
         return try {
             val dir = File(context.filesDir, folder).apply { mkdirs() }

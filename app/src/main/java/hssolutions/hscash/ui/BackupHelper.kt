@@ -40,7 +40,7 @@ object BackupHelper {
 
     fun shareBackup(context: Context) {
         workerScope.launch {
-            val contas = ContaStorage.listarContasAsync(context.applicationContext)
+            val contas = ContaStorage.listarTodosEspacosAsync(context.applicationContext)
             val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
             val file = File(exportDir, "hs_cash_backup.zip")
             val created = runCatching {
@@ -72,7 +72,7 @@ object BackupHelper {
         workerScope.launch {
             val created = writeBackup(
                 context = context.applicationContext,
-                contas = ContaStorage.listarContasAsync(context.applicationContext),
+                contas = ContaStorage.listarTodosEspacosAsync(context.applicationContext),
                 fileName = MANUAL_BACKUP_FILE_NAME,
                 replaceExisting = true,
                 pruneAutoBackups = false
@@ -377,6 +377,7 @@ object BackupHelper {
             array.put(
                 JSONObject()
                     .put("id", conta.id)
+                    .put("spaceId", conta.spaceId)
                     .put("codigo", conta.codigo)
                     .put("banco", conta.banco)
                     .put("valor", conta.valor)
@@ -385,6 +386,9 @@ object BackupHelper {
                     .put("criadaEm", conta.criadaEm)
                     .put("fornecedor", conta.fornecedor)
                     .put("categoria", conta.categoria)
+                    .put("subcategoria", conta.subcategoria)
+                    .put("responsavel", conta.responsavel)
+                    .put("pagoPor", conta.pagoPor)
                     .put("status", conta.status)
                     .put("pagoEm", conta.pagoEm)
                     .put("formaPagamento", conta.formaPagamento)
@@ -395,6 +399,13 @@ object BackupHelper {
                     .put("boletoPdfBackupEntry", boleto?.entryName)
                     .put("direcao", conta.direcao)
                     .put("clienteWhatsapp", conta.clienteWhatsapp)
+                    .put("pixCopiaCola", conta.pixCopiaCola)
+                    .put("pixChave", conta.pixChave)
+                    .put("pixRecebedor", conta.pixRecebedor)
+                    .put("pixTxId", conta.pixTxId)
+                    .put("pixAgendado", conta.pixAgendado)
+                    .put("pixAgendamentoStatus", conta.pixAgendamentoStatus)
+                    .put("atualizadaEm", conta.atualizadaEm)
                     .put("excluidaEm", conta.excluidaEm)
             )
         }
@@ -427,6 +438,7 @@ object BackupHelper {
     ): ContaSalva {
         return ContaSalva(
             id = contaId,
+            spaceId = item.optString("spaceId", SpaceStorage.DEFAULT_SPACE_ID),
             codigo = item.optString("codigo"),
             banco = item.optString("banco"),
             valor = item.optString("valor"),
@@ -435,6 +447,9 @@ object BackupHelper {
             criadaEm = item.optLong("criadaEm", System.currentTimeMillis()),
             fornecedor = item.optString("fornecedor"),
             categoria = item.optString("categoria", "Outros"),
+            subcategoria = item.optString("subcategoria").takeIf { it.isNotBlank() && it != "null" },
+            responsavel = item.optString("responsavel").takeIf { it.isNotBlank() && it != "null" },
+            pagoPor = item.optString("pagoPor").takeIf { it.isNotBlank() && it != "null" },
             status = item.optString("status", ContaStatus.PENDENTE),
             pagoEm = if (item.has("pagoEm") && !item.isNull("pagoEm")) item.optLong("pagoEm") else null,
             formaPagamento = if (item.has("formaPagamento") && !item.isNull("formaPagamento")) item.optString("formaPagamento") else null,
@@ -447,6 +462,13 @@ object BackupHelper {
                 ?: legacyPath(item, "boletoPdfPath", allowLegacyPaths),
             direcao = item.optString("direcao", ContaDirecao.PAGAR),
             clienteWhatsapp = if (item.has("clienteWhatsapp") && !item.isNull("clienteWhatsapp")) item.optString("clienteWhatsapp") else null,
+            pixCopiaCola = if (item.has("pixCopiaCola") && !item.isNull("pixCopiaCola")) item.optString("pixCopiaCola") else null,
+            pixChave = if (item.has("pixChave") && !item.isNull("pixChave")) item.optString("pixChave") else null,
+            pixRecebedor = if (item.has("pixRecebedor") && !item.isNull("pixRecebedor")) item.optString("pixRecebedor") else null,
+            pixTxId = if (item.has("pixTxId") && !item.isNull("pixTxId")) item.optString("pixTxId") else null,
+            pixAgendado = item.optBoolean("pixAgendado", false),
+            pixAgendamentoStatus = if (item.has("pixAgendamentoStatus") && !item.isNull("pixAgendamentoStatus")) item.optString("pixAgendamentoStatus") else null,
+            atualizadaEm = if (item.has("atualizadaEm")) item.optLong("atualizadaEm") else item.optLong("criadaEm"),
             excluidaEm = if (item.has("excluidaEm") && !item.isNull("excluidaEm")) item.optLong("excluidaEm") else null
         )
     }

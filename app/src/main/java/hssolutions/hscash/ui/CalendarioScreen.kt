@@ -87,7 +87,7 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F7FA))
+            .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -101,7 +101,7 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Calendario", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Text(monthLabel.replaceFirstChar { it.uppercase() }, color = Color(0xFF6B7280))
+                    Text(monthLabel.replaceFirstChar { it.uppercase() }, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(
                     onClick = {
@@ -126,8 +126,8 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
 
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 FlowRow(
@@ -167,7 +167,7 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
             item {
                 Text(
                     "Nenhuma conta nesta data.",
-                    color = Color(0xFF6B7280),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(4.dp)
                 )
             }
@@ -175,8 +175,8 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
 
         items(selectedDayAccounts.sortedBy { parseContaDate(it.vencimento)?.timeInMillis ?: Long.MAX_VALUE }) { conta ->
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, Color(0xFFE0E5EC)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Row(
@@ -189,7 +189,7 @@ fun CalendarioScreen(onBack: () -> Unit = {}) {
                         Text(conta.fornecedor.ifBlank { conta.banco }, fontWeight = FontWeight.Bold)
                         Text(
                             "${if (conta.direcao == ContaDirecao.RECEBER) "Receber" else "Pagar"} em ${conta.vencimento}",
-                            color = Color(0xFF6B7280)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Text(
@@ -247,19 +247,19 @@ private fun DayCell(
     onClick: () -> Unit
 ) {
     val bg = when {
-        isSelected -> Color(0xFF111827)
-        count > 0 -> Color(0xFF1565C0)
-        isToday -> Color(0xFFE3F2FD)
-        else -> Color(0xFFF8FAFC)
+        isSelected -> MaterialTheme.colorScheme.primary
+        count > 0 -> MaterialTheme.colorScheme.primary
+        isToday -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surface
     }
-    val fg = if (isSelected || count > 0) Color.White else Color(0xFF111827)
+    val fg = if (isSelected || count > 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     Column(
         modifier = Modifier
             .size(42.dp)
             .background(bg, CircleShape)
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
-                color = if (isSelected) Color(0xFF22C55E) else Color(0xFFE0E5EC),
+                color = if (isSelected) Color(0xFF22C55E) else MaterialTheme.colorScheme.outlineVariant,
                 shape = CircleShape
             )
             .clickable(onClick = onClick),

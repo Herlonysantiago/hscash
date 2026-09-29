@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,6 +54,9 @@ import java.util.Locale
 @Composable
 fun ContaDetalheScreen(
     contaId: String,
+    initialAction: String? = null,
+    initialPix: String = "",
+    onScanPix: () -> Unit = {},
     onBack: () -> Unit = {},
     onDeleted: () -> Unit = {}
 ) {
@@ -63,24 +67,67 @@ fun ContaDetalheScreen(
     var processando by remember { mutableStateOf(false) }
     var fornecedor by remember(conta?.id) { mutableStateOf(conta?.fornecedor.orEmpty()) }
     var categoria by remember(conta?.id) { mutableStateOf(conta?.categoria.orEmpty()) }
+    var subcategoria by remember(conta?.id) { mutableStateOf(conta?.subcategoria.orEmpty()) }
+    var responsavel by remember(conta?.id) { mutableStateOf(conta?.responsavel.orEmpty()) }
     var valor by remember(conta?.id) { mutableStateOf(conta?.valor.orEmpty()) }
     var vencimento by remember(conta?.id) { mutableStateOf(conta?.vencimento.orEmpty()) }
     var clienteWhatsapp by remember(conta?.id) { mutableStateOf(conta?.clienteWhatsapp.orEmpty()) }
     var recorrente by remember(conta?.id) { mutableStateOf(conta?.recorrente ?: false) }
     var recorrencia by remember(conta?.id) { mutableStateOf(conta?.recorrencia ?: "Mensal") }
+    var recurrenceKind by remember(conta?.id) {
+        mutableStateOf(if (conta?.tipo == "Assinatura") RecurrenceKind.SUBSCRIPTION else RecurrenceKind.ACCOUNT)
+    }
+    var pixCopiaCola by remember(conta?.id) { mutableStateOf(conta?.pixCopiaCola.orEmpty()) }
+    var pixChave by remember(conta?.id) { mutableStateOf(conta?.pixChave.orEmpty()) }
+    var pixRecebedor by remember(conta?.id) { mutableStateOf(conta?.pixRecebedor.orEmpty()) }
+    var pixTxId by remember(conta?.id) { mutableStateOf(conta?.pixTxId.orEmpty()) }
+    var pixAgendado by remember(conta?.id) { mutableStateOf(conta?.pixAgendado ?: false) }
+    var pixAgendamentoStatus by remember(conta?.id) { mutableStateOf(conta?.pixAgendamentoStatus) }
+    var showPixFields by remember(conta?.id) {
+        mutableStateOf(!conta?.pixCopiaCola.isNullOrBlank() || !conta?.pixChave.isNullOrBlank())
+    }
     var erro by remember { mutableStateOf<String?>(null) }
     var confirmarExclusao by remember { mutableStateOf(false) }
     var confirmarPagamento by remember { mutableStateOf(false) }
     var dataPagamento by remember { mutableStateOf(formatPaymentDate(System.currentTimeMillis())) }
     var formaPagamento by remember { mutableStateOf("PIX") }
     var observacaoPagamento by remember { mutableStateOf("") }
+    var pagoPor by remember { mutableStateOf("") }
     var erroPagamento by remember { mutableStateOf<String?>(null) }
     var confirmarExclusaoComprovante by remember { mutableStateOf(false) }
+    var initialActionHandled by remember(contaId, initialAction) { mutableStateOf(false) }
     val isReceber = conta?.direcao == ContaDirecao.RECEBER
+    val spaceMembers = rememberActiveSpaceMemberNames()
 
     LaunchedEffect(contaId) {
         conta = ContaStorage.buscarContaAsync(context, contaId)
         carregando = false
+    }
+
+    LaunchedEffect(initialPix) {
+        if (initialPix.isNotBlank()) {
+            val parsed = PixUtils.parse(initialPix)
+            pixCopiaCola = PixUtils.normalize(initialPix)
+            if (parsed.valid) {
+                pixChave = parsed.key ?: pixChave
+                pixRecebedor = parsed.recipient ?: pixRecebedor
+                pixTxId = parsed.txId ?: pixTxId
+            }
+        }
+    }
+
+    LaunchedEffect(conta, initialAction, initialActionHandled) {
+        val atual = conta
+        if (!initialActionHandled && initialAction == "pagar" && atual != null) {
+            initialActionHandled = true
+            if (atual.status != ContaStatus.PAGO) {
+                dataPagamento = formatPaymentDate(System.currentTimeMillis())
+                formaPagamento = atual.formaPagamento ?: "PIX"
+                observacaoPagamento = atual.observacaoPagamento.orEmpty()
+                erroPagamento = null
+                confirmarPagamento = true
+            }
+        }
     }
 
     val receiptLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -159,6 +206,38 @@ fun ContaDetalheScreen(
             )
         }
 
+        contaAtual.pixCopiaCola?.takeIf { PixUtils.parse(it).valid }?.let { pixCode ->
+            PixPaymentCard(
+                payload = pixCode,
+                actionLabel = if (isReceber) "Confirmar recebimento" else "Já paguei",
+                showAction = contaAtual.status != ContaStatus.PAGO,
+                onAction = {
+                    dataPagamento = formatPaymentDate(System.currentTimeMillis())
+                    formaPagamento = "PIX"
+                    observacaoPagamento = contaAtual.pixTxId?.let { "TxID: $it" }.orEmpty()
+                    erroPagamento = null
+                    confirmarPagamento = true
+                }
+            )
+        }
+        if (contaAtual.pixAgendado) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f))
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Pix agendado", fontWeight = FontWeight.Bold)
+                    Text("Situação: ${contaAtual.pixAgendamentoStatus ?: PixAgendamentoStatus.AGENDADO}")
+                    Text(
+                        "Confirme no extrato antes de considerar o pagamento concluído.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+
         contaAtual.boletoPdfPath?.let { path ->
             OutlinedButton(
                 onClick = { ReceiptHelper.openReceipt(context, path) },
@@ -166,12 +245,17 @@ fun ContaDetalheScreen(
             ) {
                 Text("Abrir PDF original do boleto")
             }
+            Text(
+                attachmentCloudLabel(path, contaAtual.boletoPdfCloudPath),
+                color = attachmentCloudColor(path, contaAtual.boletoPdfCloudPath),
+                style = MaterialTheme.typography.bodySmall
+            )
         }
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, Color(0xFFE0E5EC))
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Column(
                 modifier = Modifier.padding(14.dp),
@@ -185,13 +269,27 @@ fun ContaDetalheScreen(
                     singleLine = true,
                     colors = hsCashOutlinedTextFieldColors()
                 )
-                OutlinedTextField(
+                CategorySelector(
                     value = categoria,
-                    onValueChange = { categoria = it },
+                    onValueChange = {
+                        categoria = it
+                        subcategoria = ""
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Categoria") },
-                    singleLine = true,
-                    colors = hsCashOutlinedTextFieldColors()
+                    direction = contaAtual.direcao
+                )
+                SubcategorySelector(
+                    category = categoria,
+                    value = subcategoria,
+                    onValueChange = { subcategoria = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                PersonSelector(
+                    value = responsavel,
+                    onValueChange = { responsavel = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = "Responsável pela conta (opcional)",
+                    members = spaceMembers
                 )
                 OutlinedTextField(
                     value = valor,
@@ -201,17 +299,15 @@ fun ContaDetalheScreen(
                     singleLine = true,
                     colors = hsCashOutlinedTextFieldColors()
                 )
-                OutlinedTextField(
+                DateInputField(
                     value = vencimento,
                     onValueChange = {
                         vencimento = it
                         erro = null
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (contaAtual.direcao == ContaDirecao.RECEBER) "Data prevista (dd/mm/aaaa)" else "Vencimento (dd/mm/aaaa)") },
-                    singleLine = true,
-                    isError = erro != null,
-                    colors = hsCashOutlinedTextFieldColors()
+                    label = if (contaAtual.direcao == ContaDirecao.RECEBER) "Data prevista" else "Vencimento",
+                    isError = erro != null
                 )
                 if (contaAtual.direcao == ContaDirecao.RECEBER) {
                     OutlinedTextField(
@@ -224,6 +320,104 @@ fun ContaDetalheScreen(
                         colors = hsCashOutlinedTextFieldColors()
                     )
                 }
+                OutlinedButton(
+                    onClick = { showPixFields = !showPixFields },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        when {
+                            showPixFields -> "Ocultar dados Pix"
+                            pixCopiaCola.isNotBlank() || pixChave.isNotBlank() -> "Pix configurado • editar"
+                            else -> "Adicionar dados Pix (opcional)"
+                        }
+                    )
+                }
+                if (showPixFields) {
+                OutlinedTextField(
+                    value = pixCopiaCola,
+                    onValueChange = {
+                        pixCopiaCola = it
+                        val parsed = PixUtils.parse(it)
+                        if (parsed.valid) {
+                            pixChave = parsed.key ?: pixChave
+                            pixRecebedor = parsed.recipient ?: pixRecebedor
+                            pixTxId = parsed.txId ?: pixTxId
+                        }
+                        erro = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Pix Copia e Cola (opcional)") },
+                    minLines = 2,
+                    maxLines = 4,
+                    colors = hsCashOutlinedTextFieldColors()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        ClipboardHelper.paste(context)?.let { pixCopiaCola = it }
+                    }) { Text("Colar Pix") }
+                    TextButton(onClick = onScanPix) { Text("Escanear QR Pix") }
+                }
+                if (pixCopiaCola.isNotBlank()) {
+                    val parsed = PixUtils.parse(pixCopiaCola)
+                    Text(
+                        if (parsed.valid) "Código Pix válido" else parsed.error.orEmpty(),
+                        color = if (parsed.valid) Color(0xFF0B6B2B) else Color(0xFFD32F2F),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                OutlinedTextField(
+                    value = pixChave,
+                    onValueChange = { pixChave = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Chave Pix") },
+                    singleLine = true,
+                    colors = hsCashOutlinedTextFieldColors()
+                )
+                OutlinedTextField(
+                    value = pixRecebedor,
+                    onValueChange = { pixRecebedor = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Recebedor") },
+                    singleLine = true,
+                    colors = hsCashOutlinedTextFieldColors()
+                )
+                OutlinedTextField(
+                    value = pixTxId,
+                    onValueChange = { pixTxId = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("TxID") },
+                    singleLine = true,
+                    colors = hsCashOutlinedTextFieldColors()
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Pix agendado no banco", fontWeight = FontWeight.Bold)
+                        Text("Agendar não significa pagar.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = pixAgendado,
+                        onCheckedChange = {
+                            pixAgendado = it
+                            pixAgendamentoStatus = if (it) PixAgendamentoStatus.AGENDADO else null
+                        }
+                    )
+                }
+                if (pixAgendado && contaAtual.status != ContaStatus.PAGO) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(PixAgendamentoStatus.AGENDADO, PixAgendamentoStatus.FALHOU).forEach { status ->
+                            TextButton(onClick = { pixAgendamentoStatus = status }) {
+                                Text(
+                                    if (status == PixAgendamentoStatus.AGENDADO) "Agendado" else "Falhou",
+                                    fontWeight = if (pixAgendamentoStatus == status) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -233,15 +427,10 @@ fun ContaDetalheScreen(
                 }
                 if (recorrente) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Semanal", "Mensal", "Anual").forEach { option ->
-                            TextButton(onClick = { recorrencia = option }) {
-                                Text(
-                                    text = option,
-                                    fontWeight = if (recorrencia == option) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
-                        }
+                        FilterChip(selected = recurrenceKind == RecurrenceKind.ACCOUNT, onClick = { recurrenceKind = RecurrenceKind.ACCOUNT }, label = { Text("Conta recorrente") })
+                        FilterChip(selected = recurrenceKind == RecurrenceKind.SUBSCRIPTION, onClick = { recurrenceKind = RecurrenceKind.SUBSCRIPTION }, label = { Text("Assinatura") })
                     }
+                    RecurrenceSelector(value = recorrencia, onValueChange = { recorrencia = it })
                 }
                 erro?.let {
                     Text(
@@ -256,21 +445,22 @@ fun ContaDetalheScreen(
         if (contaAtual.status == ContaStatus.PAGO) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF7EE)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                 border = BorderStroke(1.dp, Color(0xFF9AD0A6))
             ) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         if (contaAtual.direcao == ContaDirecao.RECEBER) "Recebimento confirmado" else "Pagamento confirmado",
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF166534)
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
-                    contaAtual.pagoEm?.let { Text("Data: ${formatPaymentDate(it)}", color = Color(0xFF334155)) }
-                    contaAtual.formaPagamento?.let { Text("Forma: $it", color = Color(0xFF334155)) }
-                    contaAtual.observacaoPagamento?.let { Text("Observação: $it", color = Color(0xFF334155)) }
+                    contaAtual.pagoEm?.let { Text("Data: ${formatPaymentDate(it)}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    contaAtual.formaPagamento?.let { Text("Forma: $it", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    contaAtual.observacaoPagamento?.let { Text("Observação: $it", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    contaAtual.pagoPor?.let { Text("Pago por: $it", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     Text(
                         if (contaAtual.comprovantePath != null) "Comprovante anexado" else "Comprovante não anexado (opcional)",
-                        color = Color(0xFF64748B),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -283,19 +473,36 @@ fun ContaDetalheScreen(
                     erro = "Digite uma data valida no formato dd/mm/aaaa."
                     return@Button
                 }
+                if (pixCopiaCola.isNotBlank() && !PixUtils.parse(pixCopiaCola).valid) {
+                    erro = PixUtils.parse(pixCopiaCola).error
+                    return@Button
+                }
 
                 val atualizada = contaAtual.copy(
                     fornecedor = fornecedor.trim(),
                     categoria = categoria.ifBlank { "Outros" }.trim(),
+                    subcategoria = subcategoria.trim().takeIf(String::isNotBlank),
+                    responsavel = responsavel.trim().takeIf(String::isNotBlank),
                     valor = valor.trim(),
                     vencimento = vencimento.trim(),
                     clienteWhatsapp = if (contaAtual.direcao == ContaDirecao.RECEBER) clienteWhatsapp.trim().takeIf { it.isNotBlank() } else null,
                     recorrente = recorrente,
-                    recorrencia = recorrencia
+                    recorrencia = recorrencia,
+                    tipo = if (recorrente && recurrenceKind == RecurrenceKind.SUBSCRIPTION) "Assinatura" else if (contaAtual.tipo == "Assinatura") "Conta manual" else contaAtual.tipo,
+                    pixCopiaCola = pixCopiaCola.let(PixUtils::normalize).takeIf(String::isNotBlank),
+                    pixChave = pixChave.trim().takeIf(String::isNotBlank),
+                    pixRecebedor = pixRecebedor.trim().takeIf(String::isNotBlank),
+                    pixTxId = pixTxId.trim().takeIf(String::isNotBlank),
+                    pixAgendado = pixAgendado,
+                    pixAgendamentoStatus = if (pixAgendado) pixAgendamentoStatus ?: PixAgendamentoStatus.AGENDADO else null
                 )
                 scope.launch {
                     processando = true
                     try {
+                        if (pixCopiaCola.isNotBlank() && ContaStorage.existePixDuplicadoAsync(context, pixCopiaCola, contaAtual.id)) {
+                            erro = "Este código Pix já está cadastrado em outra conta."
+                            return@launch
+                        }
                         ContaStorage.atualizarContaAsync(context, atualizada)
                         conta = atualizada
                         Toast.makeText(context, "Conta atualizada", Toast.LENGTH_SHORT).show()
@@ -388,6 +595,13 @@ fun ContaDetalheScreen(
                             singleLine = true,
                             colors = hsCashOutlinedTextFieldColors()
                         )
+                        PersonSelector(
+                            value = pagoPor,
+                            onValueChange = { pagoPor = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = if (contaAtual.direcao == ContaDirecao.RECEBER) "Recebido por (opcional)" else "Pago por (opcional)",
+                            members = spaceMembers
+                        )
                         OutlinedTextField(
                             value = observacaoPagamento,
                             onValueChange = { observacaoPagamento = it },
@@ -398,7 +612,7 @@ fun ContaDetalheScreen(
                             colors = hsCashOutlinedTextFieldColors()
                         )
                         erroPagamento?.let { Text(it, color = Color(0xFFD32F2F), style = MaterialTheme.typography.bodySmall) }
-                        Text("O comprovante é opcional e pode ser anexado após a confirmação.", color = Color(0xFF64748B), style = MaterialTheme.typography.bodySmall)
+                        Text("O comprovante é opcional e pode ser anexado após a confirmação.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
                 },
                 confirmButton = {
@@ -418,7 +632,8 @@ fun ContaDetalheScreen(
                                         id = contaAtual.id,
                                         pagoEm = pagoEm,
                                         formaPagamento = formaPagamento,
-                                        observacaoPagamento = observacaoPagamento
+                                        observacaoPagamento = observacaoPagamento,
+                                        pagoPor = pagoPor
                                     )
                                     conta = ContaStorage.buscarContaAsync(context, contaAtual.id)
                                     confirmarPagamento = false
@@ -448,7 +663,8 @@ fun ContaDetalheScreen(
                         vencimento = vencimento.trim(),
                         clienteWhatsapp = clienteWhatsapp.trim().takeIf { it.isNotBlank() },
                         recorrente = recorrente,
-                        recorrencia = recorrencia
+                        recorrencia = recorrencia,
+                        tipo = if (recorrente && recurrenceKind == RecurrenceKind.SUBSCRIPTION) "Assinatura" else if (contaAtual.tipo == "Assinatura") "Conta manual" else contaAtual.tipo
                     )
                     scope.launch {
                         processando = true
@@ -501,6 +717,13 @@ fun ContaDetalheScreen(
                     fontSize = 12.sp
                 )
             }
+        }
+        if (contaAtual.comprovantePath != null || contaAtual.comprovanteCloudPath != null) {
+            Text(
+                attachmentCloudLabel(contaAtual.comprovantePath, contaAtual.comprovanteCloudPath),
+                color = attachmentCloudColor(contaAtual.comprovantePath, contaAtual.comprovanteCloudPath),
+                style = MaterialTheme.typography.bodySmall
+            )
         }
 
     }
@@ -572,6 +795,19 @@ fun ContaDetalheScreen(
             dismissButton = { TextButton(onClick = { confirmarExclusaoComprovante = false }) { Text("Cancelar") } }
         )
     }
+}
+
+private fun attachmentCloudLabel(localPath: String?, cloudPath: String?): String = when {
+    localPath != null && cloudPath != null -> "Sincronizado na nuvem"
+    localPath != null -> "Aguardando envio para a nuvem"
+    cloudPath != null -> "Exclusão aguardando sincronização"
+    else -> "Somente neste aparelho"
+}
+
+@Composable
+private fun attachmentCloudColor(localPath: String?, cloudPath: String?) = when {
+    localPath != null && cloudPath != null -> MaterialTheme.colorScheme.primary
+    else -> MaterialTheme.colorScheme.tertiary
 }
 
 private fun formatPaymentDate(timestamp: Long): String {

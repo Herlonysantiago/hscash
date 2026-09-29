@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -131,7 +132,7 @@ fun ContasScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF3F6FA))
+            .background(MaterialTheme.colorScheme.background)
             .padding(16.dp)
     ) {
         Card(
@@ -221,8 +222,8 @@ fun ContasScreen(
                     },
                     label = { Text(label, fontWeight = if (direcao == value) FontWeight.Bold else FontWeight.Normal) },
                     colors = FilterChipDefaults.filterChipColors(
-                        containerColor = Color.White,
-                        labelColor = Color(0xFF111827),
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        labelColor = MaterialTheme.colorScheme.onSurface,
                         selectedContainerColor = if (value == ContaDirecao.RECEBER) Color(0xFF0B6B2B) else Color(0xFF1565C0),
                         selectedLabelColor = Color.White
                     )
@@ -251,16 +252,16 @@ fun ContasScreen(
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             shape = MaterialTheme.shapes.medium,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color(0xFF111827),
-                unfocusedTextColor = Color(0xFF111827),
-                focusedContainerColor = Color.White,
-                unfocusedContainerColor = Color.White,
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                 focusedBorderColor = Color(0xFF1565C0),
-                unfocusedBorderColor = Color(0xFFCBD5E1),
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
                 focusedLabelColor = Color(0xFF1565C0),
-                unfocusedLabelColor = Color(0xFF4B5563),
+                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 focusedLeadingIconColor = Color(0xFF1565C0),
-                unfocusedLeadingIconColor = Color(0xFF4B5563)
+                unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
             )
         )
 
@@ -279,15 +280,15 @@ fun ContasScreen(
                         )
                     },
                     colors = FilterChipDefaults.filterChipColors(
-                        containerColor = Color.White,
-                        labelColor = Color(0xFF111827),
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        labelColor = MaterialTheme.colorScheme.onSurface,
                         selectedContainerColor = Color(0xFF1565C0),
                         selectedLabelColor = Color.White
                     ),
                     border = FilterChipDefaults.filterChipBorder(
                         enabled = true,
                         selected = filtro == item,
-                        borderColor = Color(0xFFCBD5E1),
+                        borderColor = MaterialTheme.colorScheme.outline,
                         selectedBorderColor = Color(0xFF1565C0)
                     )
                 )
@@ -305,7 +306,7 @@ fun ContasScreen(
                         onClick = { categoriaSelecionada = null },
                         label = { Text("Categorias") },
                         colors = FilterChipDefaults.filterChipColors(
-                            containerColor = Color.White, labelColor = Color(0xFF111827),
+                            containerColor = MaterialTheme.colorScheme.surface, labelColor = MaterialTheme.colorScheme.onSurface,
                             selectedContainerColor = Color(0xFF0B6B2B), selectedLabelColor = Color.White
                         )
                     )
@@ -316,7 +317,7 @@ fun ContasScreen(
                         onClick = { categoriaSelecionada = categoria },
                         label = { Text(categoria) },
                         colors = FilterChipDefaults.filterChipColors(
-                            containerColor = Color.White, labelColor = Color(0xFF111827),
+                            containerColor = MaterialTheme.colorScheme.surface, labelColor = MaterialTheme.colorScheme.onSurface,
                             selectedContainerColor = Color(0xFF0B6B2B), selectedLabelColor = Color.White
                         )
                     )
@@ -379,7 +380,7 @@ fun ContasScreen(
                             "Nenhuma conta encontrada."
                         },
                         style = MaterialTheme.typography.bodyLarge,
-                        color = Color(0xFF4B5563),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 16.dp)
                     )
                 }
@@ -441,13 +442,14 @@ private fun ContaCard(
     onClick: () -> Unit
 ) {
     val statusColor = Color(statusColorHex(conta))
+    val identity = categoryIdentity(conta.categoria)
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(3.dp),
-        border = BorderStroke(1.dp, Color(0xFFD7DEE8)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -459,21 +461,27 @@ private fun ContaCard(
             if (selectionMode) {
                 Checkbox(checked = selected, onCheckedChange = onSelectionChange)
             }
+            Icon(identity.icon, contentDescription = null, tint = identity.color, modifier = Modifier.size(26.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     conta.fornecedor.ifBlank { conta.banco },
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF111827)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    "${if (conta.direcao == ContaDirecao.RECEBER) "Receber" else "Pagar"} - ${conta.categoria} - ${conta.banco}",
+                    buildString {
+                        append("${if (conta.direcao == ContaDirecao.RECEBER) "Receber" else "Pagar"} - ${identity.label}")
+                        conta.subcategoria?.takeIf(String::isNotBlank)?.let { append(" • $it") }
+                        append(" - ${conta.banco}")
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF6B7280)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     "${if (conta.direcao == ContaDirecao.RECEBER) "Previsao" else "Vencimento"}: ${conta.vencimento}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF6B7280)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))

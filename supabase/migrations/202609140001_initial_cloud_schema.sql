@@ -75,6 +75,13 @@ create table public.accounts (
     direcao text not null default 'PAGAR'
         check (direcao in ('PAGAR', 'RECEBER')),
     cliente_whatsapp text,
+    pix_copia_cola text,
+    pix_chave text,
+    pix_recebedor text,
+    pix_txid text,
+    pix_agendado boolean not null default false,
+    pix_agendamento_status text
+        check (pix_agendamento_status is null or pix_agendamento_status in ('AGENDADO', 'EXECUTADO', 'FALHOU')),
     created_by uuid not null default auth.uid() references auth.users(id) on delete restrict,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
@@ -85,6 +92,8 @@ create table public.accounts (
 
 create index accounts_space_updated_idx on public.accounts (space_id, updated_at);
 create index accounts_space_due_idx on public.accounts (space_id, vencimento);
+create index accounts_space_pix_txid_idx on public.accounts (space_id, pix_txid)
+    where pix_txid is not null;
 
 create table public.attachments (
     id uuid primary key default gen_random_uuid(),
