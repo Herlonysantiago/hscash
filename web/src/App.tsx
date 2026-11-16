@@ -25,7 +25,7 @@ export default function App() {
   return <Panel session={session} />
 }
 
-function Splash() { return <div className="splash"><div className="brand-mark">HS</div><span>Carregando seu HS Cash…</span></div> }
+function Splash() { return <div className="splash"><img className="brand-logo" src="/hs-cash-logo.png" alt="HS Cash"/><span>Carregando seu HS Cash…</span></div> }
 
 function AuthScreen() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
@@ -48,13 +48,13 @@ function AuthScreen() {
   }
   return <main className="auth-shell">
     <section className="auth-hero">
-      <div className="auth-brand"><div className="brand-mark">HS</div><div><b>HS Cash</b><span>Controle financeiro simples</span></div></div>
+      <div className="auth-brand"><img className="brand-logo" src="/hs-cash-logo.png" alt="HS Cash"/><div><b>HS Cash</b><span>Controle financeiro simples</span></div></div>
       <div className="hero-copy"><span className="eyebrow">SEU DINHEIRO, ORGANIZADO</span><h1>Clareza para decidir.<br/><em>Controle para crescer.</em></h1><p>Contas a pagar e receber, vencimentos e espaços compartilhados em um painel seguro.</p></div>
       <div className="hero-orb"><WalletCards size={78}/></div>
       <footer>HS Solux · Segurança e simplicidade para sua rotina</footer>
     </section>
     <section className="auth-card-wrap"><form className="auth-card" onSubmit={submit}>
-      <div className="mobile-brand"><div className="brand-mark">HS</div><b>HS Cash</b></div>
+      <div className="mobile-brand"><img className="brand-logo" src="/hs-cash-logo.png" alt="HS Cash"/><b>HS Cash</b></div>
       <h2>{mode === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}</h2><p>{mode === 'login' ? 'Entre para acessar seu painel financeiro.' : 'Comece no plano Grátis, sem cobrança.'}</p>
       {!configured && <div className="notice"><AlertCircle size={18}/><span>Supabase ainda não configurado. Copie <b>.env.example</b> para <b>.env.local</b>.</span></div>}
       {mode === 'signup' && <label>Nome completo<input value={name} onChange={(e) => setName(e.target.value)} required /></label>}
@@ -86,7 +86,7 @@ function Panel({ session }: { session: Session }) {
   if (busy) return <Splash />
   return <div className="app-shell">
     <aside className={mobileMenu ? 'sidebar open' : 'sidebar'}>
-      <div className="side-brand"><div className="brand-mark">HS</div><div><b>HS Cash</b><span>Gestão financeira</span></div><button className="icon-button mobile-only" onClick={() => setMobileMenu(false)}><X/></button></div>
+      <div className="side-brand"><img className="brand-logo" src="/hs-cash-logo.png" alt="HS Cash"/><div><b>HS Cash</b><span>Gestão financeira</span></div><button className="icon-button mobile-only" onClick={() => setMobileMenu(false)}><X/></button></div>
       <div className="space-switcher"><span>ESPAÇO ATUAL</span><button><i style={{ background: current?.cor || '#27c3a5' }}><WalletCards size={18}/></i><div><b>{current?.nome || 'Sem espaço'}</b><small>{current?.tipo?.toLowerCase() || 'crie seu primeiro espaço'}</small></div><ChevronDown size={16}/></button></div>
       <nav>{nav.map(([label, Icon]) => <button key={label} className={active === label ? 'active' : ''} onClick={() => { setActive(label); setMobileMenu(false) }}><Icon size={19}/>{label}{label === 'Alertas' && visibleAccounts.some((a) => effectiveStatus(a) === 'ATRASADO') && <i className="nav-dot"/>}</button>)}</nav>
       <div className="side-bottom"><div className="plan-chip"><span>PLANO {plan}</span><small>{plan === 'FREE' ? `${spaces.length} de 2 espaços` : plan === 'PRO' ? `${spaces.length} de 10 espaços` : 'Espaços ilimitados'}</small><div><i style={{ width: `${plan === 'FREE' ? Math.min(spaces.length / 2 * 100, 100) : plan === 'PRO' ? Math.min(spaces.length / 10 * 100, 100) : 100}%` }}/></div></div><button><Settings size={18}/>Configurações</button><button onClick={() => supabase?.auth.signOut()}><LogOut size={18}/>Sair</button></div>

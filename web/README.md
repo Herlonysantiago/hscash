@@ -8,9 +8,9 @@ Painel web responsivo do HS Cash, construído a partir do aplicativo Android exi
 2. Preencha a URL e a chave **publicável** do mesmo projeto Supabase usado pelo Android. Nunca use `service_role`.
 3. Execute `npm install`, `npm run test` e `npm run dev`.
 
-O callback web a cadastrar no Supabase Auth deve apontar para a URL local e, futuramente, para `https://cash.hssolux.com.br`. O callback Android `hscash://auth-callback/` deve ser preservado.
+O callback web a cadastrar no Supabase Auth deve apontar para a URL local e, futuramente, para `https://hscash.hssolux.com.br`. O callback Android `hscash://auth-callback/` deve ser preservado.
 
-O login também oferece Google. No Supabase, ative Authentication > Providers > Google, informe as credenciais OAuth do Google Cloud e adicione `http://localhost:4173/` e `https://cash.hssolux.com.br/` em Redirect URLs.
+O login também oferece Google. No Supabase, ative Authentication > Providers > Google, informe as credenciais OAuth do Google Cloud e adicione `http://localhost:4173/` e `https://hscash.hssolux.com.br/` em Redirect URLs.
 
 ## Segurança
 
@@ -24,6 +24,6 @@ Veja `IMPLEMENTATION.md` para escopo verificado, testes, lacunas e migrações.
 
 ## Publicação no GitHub Pages
 
-O workflow `.github/workflows/deploy-web.yml` executa lint, testes e build da pasta `/web`, publicando a branch `main`. O domínio `cash.hssolux.com.br` é preservado pelo arquivo `public/CNAME`.
+O workflow `.github/workflows/deploy-web.yml` executa lint, testes e build da pasta `/web`, publicando a branch `main`. O domínio `hscash.hssolux.com.br` é preservado pelo arquivo `public/CNAME`.
 
 Cadastre `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` como secrets do repositório. Valores `VITE_*` integram o bundle público; use somente a chave publicável e mantenha `service_role` fora do frontend.
