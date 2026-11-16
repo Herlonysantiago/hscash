@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { AlertCircle, Bell, CalendarDays, Check, ChevronDown, CircleDollarSign, Clock3, FileText, Filter, LayoutDashboard, LogOut, Menu, MoreHorizontal, Plus, ReceiptText, Search, Settings, Users, WalletCards, X } from 'lucide-react'
 import { canEdit, effectiveStatus, formatMoney, summarize } from './domain'
-import { configured, loadAccounts, loadWorkspace, markPaid, saveAccount, signIn, signInWithGoogle, signUp, softDeleteAccount, supabase } from './supabase'
+import { changeMemberRole, configured, createSpace, inviteToSpace, loadAccounts, loadSpaceAccess, loadWorkspace, markPaid, removeSpaceMember, saveAccount, signIn, signInWithGoogle, signUp, softDeleteAccount, supabase } from './supabase'
 import type { Account, AccountDraft, Plan, Space } from './types'
 
 const emptyDraft: AccountDraft = { direcao: 'PAGAR', fornecedor: '', valor: '', vencimento: new Date().toISOString().slice(0, 10), categoria: 'Outros', subcategoria: '', responsavel: '', codigo: '', banco: '', recorrente: false, recorrencia: 'Mensal' }
@@ -25,7 +25,7 @@ export default function App() {
   return <Panel session={session} />
 }
 
-function Splash() { return <div className="splash"><img className="brand-logo" src="/hs-cash-logo.png" alt="HS Cash"/><span>Carregando seu HS Cash…</span></div> }
+function Splash() { return <div className="splash"><div className="brand-mark">HS</div><span>Carregando seu HS Cash…</span></div> }
 
 function AuthScreen() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
@@ -48,13 +48,13 @@ function AuthScreen() {
   }
   return <main className="auth-shell">
     <section className="auth-hero">
-      <div className="auth-brand"><img className="brand-logo" src="/hs-cash-logo.png" alt="HS Cash"/><div><b>HS Cash</b><span>Controle financeiro simples</span></div></div>
+      <div className="auth-brand"><div className="brand-mark">HS</div><div><b>HS Cash</b><span>Controle financeiro simples</span></div></div>
       <div className="hero-copy"><span className="eyebrow">SEU DINHEIRO, ORGANIZADO</span><h1>Clareza para decidir.<br/><em>Controle para crescer.</em></h1><p>Contas a pagar e receber, vencimentos e espaços compartilhados em um painel seguro.</p></div>
       <div className="hero-orb"><WalletCards size={78}/></div>
       <footer>HS Solux · Segurança e simplicidade para sua rotina</footer>
     </section>
     <section className="auth-card-wrap"><form className="auth-card" onSubmit={submit}>
-      <div className="mobile-brand"><img className="brand-logo" src="/hs-cash-logo.png" alt="HS Cash"/><b>HS Cash</b></div>
+      <div className="mobile-brand"><div className="brand-mark">HS</div><b>HS Cash</b></div>
       <h2>{mode === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}</h2><p>{mode === 'login' ? 'Entre para acessar seu painel financeiro.' : 'Comece no plano Grátis, sem cobrança.'}</p>
       {!configured && <div className="notice"><AlertCircle size={18}/><span>Supabase ainda não configurado. Copie <b>.env.example</b> para <b>.env.local</b>.</span></div>}
       {mode === 'signup' && <label>Nome completo<input value={name} onChange={(e) => setName(e.target.value)} required /></label>}
@@ -75,9 +75,9 @@ function Panel({ session }: { session: Session }) {
   const [busy, setBusy] = useState(true), [error, setError] = useState(''), [mobileMenu, setMobileMenu] = useState(false)
   const [modal, setModal] = useState(false), [editing, setEditing] = useState<Account | null>(null)
   const current = spaces.find((space) => space.id === spaceId)
-  const refreshAccounts = useCallback(async (selected = spaceId) => { if (!selected) return; setAccounts(await loadAccounts(selected)) }, [spaceId])
+  async function refreshAccounts(selected = spaceId) { if (!selected) return; setAccounts(await loadAccounts(selected)) }
   useEffect(() => { loadWorkspace(session).then((data) => { setSpaces(data.spaces); setPlan(data.plan); setName(data.name); const first = data.spaces[0]?.id ?? ''; setSpaceId(first); return first ? loadAccounts(first) : [] }).then(setAccounts).catch((e) => setError(e.message)).finally(() => setBusy(false)) }, [session])
-  useEffect(() => { if (spaceId) refreshAccounts(spaceId).catch((e) => setError(e.message)) }, [spaceId, refreshAccounts])
+  useEffect(() => { if (spaceId) refreshAccounts(spaceId).catch((e) => setError(e.message)) }, [spaceId])
   const visibleAccounts = accounts.filter((a) => !a.deleted_at)
   const totals = summarize(visibleAccounts)
   function openNew() { setEditing(null); setModal(true) }
@@ -86,7 +86,7 @@ function Panel({ session }: { session: Session }) {
   if (busy) return <Splash />
   return <div className="app-shell">
     <aside className={mobileMenu ? 'sidebar open' : 'sidebar'}>
-      <div className="side-brand"><img className="brand-logo" src="/hs-cash-logo.png" alt="HS Cash"/><div><b>HS Cash</b><span>Gestão financeira</span></div><button className="icon-button mobile-only" onClick={() => setMobileMenu(false)}><X/></button></div>
+      <div className="side-brand"><div className="brand-mark">HS</div><div><b>HS Cash</b><span>Gestão financeira</span></div><button className="icon-button mobile-only" onClick={() => setMobileMenu(false)}><X/></button></div>
       <div className="space-switcher"><span>ESPAÇO ATUAL</span><button><i style={{ background: current?.cor || '#27c3a5' }}><WalletCards size={18}/></i><div><b>{current?.nome || 'Sem espaço'}</b><small>{current?.tipo?.toLowerCase() || 'crie seu primeiro espaço'}</small></div><ChevronDown size={16}/></button></div>
       <nav>{nav.map(([label, Icon]) => <button key={label} className={active === label ? 'active' : ''} onClick={() => { setActive(label); setMobileMenu(false) }}><Icon size={19}/>{label}{label === 'Alertas' && visibleAccounts.some((a) => effectiveStatus(a) === 'ATRASADO') && <i className="nav-dot"/>}</button>)}</nav>
       <div className="side-bottom"><div className="plan-chip"><span>PLANO {plan}</span><small>{plan === 'FREE' ? `${spaces.length} de 2 espaços` : plan === 'PRO' ? `${spaces.length} de 10 espaços` : 'Espaços ilimitados'}</small><div><i style={{ width: `${plan === 'FREE' ? Math.min(spaces.length / 2 * 100, 100) : plan === 'PRO' ? Math.min(spaces.length / 10 * 100, 100) : 100}%` }}/></div></div><button><Settings size={18}/>Configurações</button><button onClick={() => supabase?.auth.signOut()}><LogOut size={18}/>Sair</button></div>
@@ -96,16 +96,32 @@ function Panel({ session }: { session: Session }) {
       {error && <div className="error-banner"><AlertCircle size={18}/>{error}<button onClick={() => setError('')}><X size={16}/></button></div>}
       <section className="content">
         <div className="page-title"><div><span className="eyebrow">VISÃO GERAL</span><h1>{active}</h1><p>{active === 'Dashboard' ? `Olá, ${name.split(' ')[0]}. Aqui está o resumo do seu espaço.` : 'Módulo preparado para a próxima etapa incremental.'}</p></div>{current && canEdit(current.role) && <button className="primary" onClick={openNew}><Plus size={18}/>Nova conta</button>}</div>
-        {active === 'Dashboard' ? <Dashboard accounts={visibleAccounts} totals={totals} onPaid={paid} onEdit={openEdit} editable={Boolean(current && canEdit(current.role))} /> : active === 'Contas' ? <Accounts accounts={visibleAccounts} editable={Boolean(current && canEdit(current.role))} onPaid={paid} onEdit={openEdit} /> : <ModulePlaceholder name={active} />}
+        {active === 'Dashboard' ? <Dashboard accounts={visibleAccounts} onPaid={paid} onEdit={openEdit} editable={Boolean(current && canEdit(current.role))} /> : active === 'Hoje' ? <Today accounts={visibleAccounts} editable={Boolean(current && canEdit(current.role))} onPaid={paid} /> : active === 'Alertas' ? <Alerts accounts={visibleAccounts} /> : active === 'Contas' ? <Accounts accounts={visibleAccounts} editable={Boolean(current && canEdit(current.role))} onPaid={paid} onEdit={openEdit} /> : active === 'Espaços' ? <SpacesManager spaces={spaces} plan={plan} selectedId={spaceId} currentRole={current?.role || 'VIEWER'} userId={session.user.id} onSelect={setSpaceId} onCreated={async () => { const data = await loadWorkspace(session); setSpaces(data.spaces); setPlan(data.plan); setSpaceId(data.spaces.at(-1)?.id || spaceId) }} /> : <ModulePlaceholder name={active} />}
       </section>
     </main>
     {modal && current && <AccountModal account={editing} spaceId={current.id} onClose={() => setModal(false)} onSaved={async () => { setModal(false); await refreshAccounts() }} onDelete={editing ? async () => { await softDeleteAccount(editing.id); setModal(false); await refreshAccounts() } : undefined} />}
   </div>
 }
 
-function Dashboard({ accounts, totals, editable, onPaid, onEdit }: { accounts: Account[]; totals: ReturnType<typeof summarize>; editable: boolean; onPaid: (a: Account) => void; onEdit: (a: Account) => void }) {
+function Dashboard({ accounts, editable, onPaid, onEdit }: { accounts: Account[]; editable: boolean; onPaid: (a: Account) => void; onEdit: (a: Account) => void }) {
+  const [period, setPeriod] = useState<'month' | 'previous' | 'all'>('month')
+  const totals = summarize(accounts, period)
   const upcoming = [...accounts].filter((a) => a.status !== 'PAGO').sort((a, b) => a.vencimento.localeCompare(b.vencimento)).slice(0, 6)
-  return <><div className="metric-grid"><Metric label="A pagar" value={formatMoney(totals.toPay)} hint="Em aberto" tone="navy" icon={<ReceiptText/>}/><Metric label="A receber" value={formatMoney(totals.toReceive)} hint="Previsto" tone="green" icon={<CircleDollarSign/>}/><Metric label="Em atraso" value={formatMoney(totals.overdue)} hint="Requer atenção" tone="red" icon={<AlertCircle/>}/><Metric label="Total pago" value={formatMoney(totals.paid)} hint="No período" tone="blue" icon={<Check/>}/></div><div className="dashboard-grid"><section className="panel recent"><div className="panel-head"><div><h2>Próximos vencimentos</h2><p>Contas abertas ordenadas por data</p></div><button className="ghost">Ver todas</button></div><AccountTable accounts={upcoming} editable={editable} onPaid={onPaid} onEdit={onEdit}/></section><section className="panel distribution"><div className="panel-head"><div><h2>Distribuição</h2><p>Contas abertas</p></div></div><Donut accounts={accounts}/></section></div></>
+  return <><div className="dashboard-period"><span>Período dos indicadores</span><select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)}><option value="month">Este mês</option><option value="previous">Mês anterior</option><option value="all">Todo o período</option></select></div><div className="metric-grid"><Metric label="A pagar" value={formatMoney(totals.toPay)} hint="Em aberto" tone="navy" icon={<ReceiptText/>}/><Metric label="A receber" value={formatMoney(totals.toReceive)} hint="Previsto" tone="green" icon={<CircleDollarSign/>}/><Metric label="Em atraso" value={formatMoney(totals.overdue)} hint="Requer atenção" tone="red" icon={<AlertCircle/>}/><Metric label="Total pago" value={formatMoney(totals.paid)} hint={period === 'month' ? 'Pago neste mês' : period === 'previous' ? 'Pago no mês anterior' : 'Pago desde o início'} tone="blue" icon={<Check/>}/></div><div className="dashboard-grid"><section className="panel recent"><div className="panel-head"><div><h2>Próximos vencimentos</h2><p>Contas abertas ordenadas por data</p></div><button className="ghost">Ver todas</button></div><AccountTable accounts={upcoming} editable={editable} onPaid={onPaid} onEdit={onEdit}/></section><section className="panel distribution"><div className="panel-head"><div><h2>Distribuição</h2><p>Contas abertas</p></div></div><Donut accounts={accounts}/></section></div></>
+}
+
+function Today({ accounts, editable, onPaid }: { accounts: Account[]; editable: boolean; onPaid: (a: Account) => void }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const dueToday = accounts.filter((a) => a.status !== 'PAGO' && a.vencimento === today)
+  const overdue = accounts.filter((a) => a.status !== 'PAGO' && effectiveStatus(a) === 'ATRASADO')
+  const next = accounts.filter((a) => a.status !== 'PAGO' && a.vencimento > today).sort((a, b) => a.vencimento.localeCompare(b.vencimento)).slice(0, 8)
+  return <div className="today-grid"><section className="panel"><div className="panel-head"><div><h2>Vencendo hoje</h2><p>{new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full' }).format(new Date())}</p></div></div><AccountTable accounts={dueToday} editable={editable} onPaid={onPaid} onEdit={() => undefined}/></section><section className="panel"><div className="panel-head"><div><h2>Em atraso</h2><p>Contas que precisam de atenção</p></div></div><AccountTable accounts={overdue} editable={editable} onPaid={onPaid} onEdit={() => undefined}/></section><section className="panel"><div className="panel-head"><div><h2>Próximos dias</h2><p>Vencimentos futuros</p></div></div><AccountTable accounts={next} editable={editable} onPaid={onPaid} onEdit={() => undefined}/></section></div>
+}
+
+function Alerts({ accounts }: { accounts: Account[] }) {
+  const overdue = accounts.filter((a) => a.status !== 'PAGO' && effectiveStatus(a) === 'ATRASADO')
+  const dueSoon = accounts.filter((a) => a.status !== 'PAGO' && effectiveStatus(a) === 'PENDENTE').sort((a, b) => a.vencimento.localeCompare(b.vencimento)).slice(0, 10)
+  return <section className="panel alerts-list"><div className="panel-head"><div><h2>Central de alertas</h2><p>Alertas calculados a partir do vencimento e status sincronizados.</p></div></div><div className="alert-group"><h3><AlertCircle size={17}/>Em atraso ({overdue.length})</h3>{overdue.length ? overdue.map((a) => <div className="alert-item" key={a.id}><b>{a.fornecedor || a.banco || 'Conta'}</b><span>Venceu em {new Intl.DateTimeFormat('pt-BR').format(new Date(`${a.vencimento}T12:00:00`))} · {formatMoney(a.valor_centavos)}</span></div>) : <p className="empty">Nenhuma conta atrasada.</p>}</div><div className="alert-group"><h3><Bell size={17}/>Próximos vencimentos ({dueSoon.length})</h3>{dueSoon.length ? dueSoon.map((a) => <div className="alert-item" key={a.id}><b>{a.fornecedor || a.banco || 'Conta'}</b><span>Vence em {new Intl.DateTimeFormat('pt-BR').format(new Date(`${a.vencimento}T12:00:00`))} · {formatMoney(a.valor_centavos)}</span></div>) : <p className="empty">Nenhum próximo vencimento.</p>}</div></section>
 }
 
 function Metric({ label, value, hint, tone, icon }: { label: string; value: string; hint: string; tone: string; icon: React.ReactNode }) { return <article className={`metric ${tone}`}><div className="metric-icon">{icon}</div><span>{label}</span><strong>{value}</strong><small>{hint}</small></article> }
@@ -131,3 +147,15 @@ function AccountModal({ account, spaceId, onClose, onSaved, onDelete }: { accoun
 }
 
 function ModulePlaceholder({ name }: { name: string }) { return <section className="panel placeholder"><div className="placeholder-icon"><FileText/></div><h2>{name}</h2><p>A fundação, navegação e permissões deste módulo já estão preparadas. A implementação funcional será feita na próxima etapa, reproduzindo as regras do Android.</p><span>Sem dados fictícios e sem cobrança ativa</span></section> }
+
+function SpacesManager({ spaces, plan, selectedId, currentRole, userId, onSelect, onCreated }: { spaces: Space[]; plan: Plan; selectedId: string; currentRole: Space['role']; userId: string; onSelect: (id: string) => void; onCreated: () => Promise<void> }) {
+  const [showForm, setShowForm] = useState(false), [name, setName] = useState(''), [type, setType] = useState<'PESSOAL' | 'FAMILIA' | 'EMPRESA'>('PESSOAL'), [access, setAccess] = useState<{ members: Array<{ user_id: string; role: string; name: string }>; invites: Array<{ id: string; email: string; role: string }> }>({ members: [], invites: [] }), [email, setEmail] = useState(''), [inviteRole, setInviteRole] = useState<'ADMIN' | 'EDITOR' | 'VIEWER'>('EDITOR'), [error, setError] = useState(''), [busy, setBusy] = useState(false)
+  async function create() { if (!name.trim()) return; setBusy(true); setError(''); try { await createSpace(name.trim(), type); setName(''); setShowForm(false); await onCreated() } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível criar o espaço.') } finally { setBusy(false) } }
+  async function inspect(spaceId: string) { onSelect(spaceId); try { setAccess(await loadSpaceAccess(spaceId)) } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível carregar integrantes.') } }
+  async function invite() { if (!email.trim()) return; setBusy(true); setError(''); try { await inviteToSpace(selectedId, email, inviteRole, userId); setEmail(''); setAccess(await loadSpaceAccess(selectedId)) } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível enviar o convite.') } finally { setBusy(false) } }
+  async function role(user: string, next: 'ADMIN' | 'EDITOR' | 'VIEWER') { try { await changeMemberRole(selectedId, user, next); setAccess(await loadSpaceAccess(selectedId)) } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível alterar o papel.') } }
+  async function remove(user: string) { try { await removeSpaceMember(selectedId, user); setAccess(await loadSpaceAccess(selectedId)) } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível remover o integrante.') } }
+  const max = plan === 'FREE' ? 2 : plan === 'PRO' ? 10 : Infinity
+  return <section className="spaces-page"><div className="spaces-toolbar"><div><h2>Seus espaços</h2><p>Organize contas pessoais, da família ou da empresa.</p></div><button className="primary" onClick={() => setShowForm((v) => !v)}><Plus size={18}/>Novo espaço</button></div>{error && <div className="form-message">{error}</div>}{showForm && <div className="panel space-form"><label>Nome do espaço<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Minha empresa" /></label><label>Tipo<select value={type} onChange={(e) => setType(e.target.value as typeof type)}><option value="PESSOAL">Pessoal</option><option value="FAMILIA">Família</option><option value="EMPRESA">Empresa</option></select></label><div><button className="ghost" onClick={() => setShowForm(false)}>Cancelar</button><button className="primary" disabled={busy || spaces.length >= max} onClick={create}>{busy ? 'Criando…' : 'Criar espaço'}</button></div>{spaces.length >= max && <small>Limite do plano {plan} atingido. A RPC do Supabase também valida esse limite.</small>}</div>}<div className="space-grid">{spaces.map((space) => <article key={space.id} className={space.id === selectedId ? 'space-card selected' : 'space-card'} onClick={() => inspect(space.id)}><div className="space-card-top"><i style={{ background: space.cor }}><WalletCards size={20}/></i><span className={`role ${space.role.toLowerCase()}`}>{space.role}</span></div><h3>{space.nome}</h3><p>{space.tipo.toLowerCase()} · {space.role === 'VIEWER' ? 'Somente consulta' : 'Pode registrar pagamentos'}</p>{space.id === selectedId && <small>{access.members.length + 1} integrante(s) · RLS ativo</small>}</article>)}</div>{selectedId && <section className="panel access-panel"><div className="panel-head"><div><h2>Integrantes e convites</h2><p>{currentRole === 'OWNER' || currentRole === 'ADMIN' ? 'Gerencie quem pode acessar este espaço.' : 'Você pode consultar os integrantes deste espaço.'}</p></div></div>{(currentRole === 'OWNER' || currentRole === 'ADMIN') && <div className="invite-row"><input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemplo.com"/><select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as typeof inviteRole)}><option value="ADMIN">Administrador</option><option value="EDITOR">Editor</option><option value="VIEWER">Leitor</option></select><button className="primary" onClick={invite} disabled={busy}><Plus size={16}/>Convidar</button></div>}<div className="member-list">{access.members.map((member) => <div className="member-row" key={member.user_id}><div className="avatar">{member.name.slice(0, 2).toUpperCase()}</div><div><b>{member.name}</b><small>{member.role}</small></div><span/>{(currentRole === 'OWNER' || currentRole === 'ADMIN') && member.user_id !== userId && <><select value={member.role} onChange={(e) => role(member.user_id, e.target.value as 'ADMIN' | 'EDITOR' | 'VIEWER')}><option>ADMIN</option><option>EDITOR</option><option>VIEWER</option></select><button className="danger" onClick={() => remove(member.user_id)}>Remover</button></>}</div>)}{access.invites.map((invite) => <div className="member-row pending" key={invite.id}><div className="avatar">?</div><div><b>{invite.email}</b><small>Convite pendente · {invite.role}</small></div><span/></div>)}</div></section>}</section>
+}
+
