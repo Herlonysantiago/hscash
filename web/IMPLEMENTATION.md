@@ -41,4 +41,4 @@ O Android implementa contas a pagar/receber, parcelamento local, recorrência, b
 
 ## Próxima etapa recomendada
 
-Aplicar a migração em homologação, validar login e RLS com quatro usuários (owner/admin/editor/viewer), então implementar espaços/convites e anexos. Em seguida: Hoje/calendário/alertas, histórico/lixeira, recorrências/parcelamentos completos e relatórios. Publicação futura prevista em `cash.hssolux.com.br`, sem alterar o callback Android.
+Aplicar a migração em homologação, validar login e RLS com quatro usuários (owner/admin/editor/viewer), então implementar espaços/convites e anexos. Em seguida: Hoje/calendário/alertas, histórico/lixeira, recorrências/parcelamentos completos e relatórios. Publicação futura prevista em `hscash.hssolux.com.br`, sem alterar o callback Android.
