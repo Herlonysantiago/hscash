@@ -79,7 +79,6 @@ function Panel({ session }: { session: Session }) {
   useEffect(() => { loadWorkspace(session).then((data) => { setSpaces(data.spaces); setPlan(data.plan); setName(data.name); const first = data.spaces[0]?.id ?? ''; setSpaceId(first); return first ? loadAccounts(first) : [] }).then(setAccounts).catch((e) => setError(e.message)).finally(() => setBusy(false)) }, [session])
   useEffect(() => { if (spaceId) refreshAccounts(spaceId).catch((e) => setError(e.message)) }, [spaceId])
   const visibleAccounts = accounts.filter((a) => !a.deleted_at)
-  const totals = summarize(visibleAccounts)
   function openNew() { setEditing(null); setModal(true) }
   function openEdit(account: Account) { setEditing(account); setModal(true) }
   async function paid(account: Account) { if (!current || !canEdit(current.role)) return; try { await markPaid(account, name); await refreshAccounts() } catch (e) { setError(e instanceof Error ? e.message : 'Falha ao atualizar') } }
