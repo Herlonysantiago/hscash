@@ -77,6 +77,8 @@ function Panel({ session }: { session: Session }) {
   const current = spaces.find((space) => space.id === spaceId)
   async function refreshAccounts(selected = spaceId) { if (!selected) return; setAccounts(await loadAccounts(selected)) }
   useEffect(() => { loadWorkspace(session).then((data) => { setSpaces(data.spaces); setPlan(data.plan); setName(data.name); const first = data.spaces[0]?.id ?? ''; setSpaceId(first); return first ? loadAccounts(first) : [] }).then(setAccounts).catch((e) => setError(e.message)).finally(() => setBusy(false)) }, [session])
+  // The callback intentionally follows the selected space; it is not a render dependency.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (spaceId) refreshAccounts(spaceId).catch((e) => setError(e.message)) }, [spaceId])
   const visibleAccounts = accounts.filter((a) => !a.deleted_at)
   function openNew() { setEditing(null); setModal(true) }
