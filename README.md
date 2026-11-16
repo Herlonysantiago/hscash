@@ -2,6 +2,8 @@
 
 HS Cash e um aplicativo Android para leitura, cadastro e controle de boletos e contas a pagar.
 
+O mesmo repositorio tambem contem a base do painel web em [`web/`](web/README.md). Android (`app/`), web (`web/`) e Supabase (`supabase/`) permanecem separados, compartilhando o mesmo produto e backend.
+
 O app permite escanear boletos pela camera, digitar codigo de barras manualmente, extrair dados como banco, valor e vencimento, salvar contas localmente e acompanhar vencimentos em um dashboard.
 
 ## Funcionalidades
@@ -32,6 +34,10 @@ O app permite escanear boletos pela camera, digitar codigo de barras manualmente
 ## Estrutura Principal
 
 ```text
+app/       # aplicativo Android
+web/       # painel web React/Vite
+supabase/  # schema, RLS e migracoes do backend compartilhado
+
 app/src/main/java/hssolutions/hscash/
   MainActivity.kt
   ui/
