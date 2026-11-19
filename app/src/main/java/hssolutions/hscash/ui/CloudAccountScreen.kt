@@ -359,6 +359,26 @@ fun CloudAccountScreen(
         if (mode == AuthMode.SIGN_IN) {
             OutlinedButton(
                 onClick = {
+                    loading = true
+                    error = null
+                    message = null
+                    scope.launch {
+                        runCatching { CloudAuthRepository.signInWithGoogle() }
+                            .onSuccess {
+                                loading = false
+                                message = "Abra o Google para concluir o acesso. O HS Cash retomará automaticamente após o retorno."
+                            }
+                            .onFailure { error = cloudAuthErrorMessage(it); loading = false }
+                    }
+                },
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Continuar com Google") }
+        }
+
+        if (mode == AuthMode.SIGN_IN) {
+            OutlinedButton(
+                onClick = {
                     if (!email.contains("@")) {
                         error = "Informe o e-mail usado no cadastro."
                     } else {
@@ -715,3 +735,4 @@ private fun SuccessCard(message: String) {
         Text(message, modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
     }
 }
+
