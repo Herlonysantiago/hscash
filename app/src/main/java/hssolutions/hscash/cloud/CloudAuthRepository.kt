@@ -3,6 +3,7 @@ package hssolutions.hscash.cloud
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.auth.providers.Google
 import io.github.jan.supabase.postgrest.from
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -34,6 +35,11 @@ object CloudAuthRepository {
             this.password = password
         }
         return currentUser() ?: error("Nao foi possivel iniciar a sessao.")
+    }
+
+    suspend fun signInWithGoogle(): CloudUser? {
+        requireClient().auth.signInWith(Google)
+        return currentUser()
     }
 
     suspend fun signUp(name: String, email: String, password: String): SignUpResult {
@@ -138,3 +144,4 @@ internal fun cloudAuthEmailErrorMessage(error: Throwable): String {
         cloudAuthErrorMessage(error)
     }
 }
+
