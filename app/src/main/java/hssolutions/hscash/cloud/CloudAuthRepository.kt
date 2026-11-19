@@ -38,7 +38,7 @@ object CloudAuthRepository {
     }
 
     suspend fun signInWithGoogle(): CloudUser? {
-        requireClient().auth.signInWith(Google)
+        requireClient().auth.signInWith(Google, redirectUrl = "hscash://auth-callback/")
         return currentUser()
     }
 
